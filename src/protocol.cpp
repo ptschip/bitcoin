@@ -42,6 +42,13 @@ const char *XBLOCKTX="xblocktx";
 const char *GET_XBLOCKTX="get_xblocktx";
 const char *GET_XTHIN="get_xthin";
 // BUIP010 Xtreme Thinblocks - end section
+// BUIP017 Datastream Compression - begin section
+const char *CBLOCK="cblock";
+const char *TXCAT="txcat";
+const char *CTXCAT="ctxcat";
+const char *CXTHINBLOCK="cxthinblock";
+const char *GET_CXTHIN="get_cxthin";
+// BUIP017 Datastream Compression - end section
 };
 
 static const char* ppszTypeName[] =
@@ -91,6 +98,13 @@ const static std::string allNetMessageTypes[] = {
     NetMsgType::GET_XBLOCKTX,
     NetMsgType::GET_XTHIN,
     // BUIP010 Xtreme Thinbocks - end section
+    // BUIP017 Datastream Compression - begin section
+    NetMsgType::CBLOCK,
+    NetMsgType::TXCAT,
+    NetMsgType::CTXCAT,
+    NetMsgType::CXTHINBLOCK,
+    NetMsgType::GET_CXTHIN,
+    // BUIP017 Datastream Compression - end section
 };
 const static std::vector<std::string> allNetMessageTypesVec(allNetMessageTypes, allNetMessageTypes+ARRAYLEN(allNetMessageTypes));
 

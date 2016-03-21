@@ -4246,6 +4246,8 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
 
     LOCK(cs_main);
 
+    uint64_t nTxConcatenated = 0;
+    CDataStream txcat(SER_NETWORK, PROTOCOL_VERSION);
     while (it != pfrom->vRecvGetData.end()) {
         // Don't bother if send buffer is too full to respond anyway
         if (pfrom->nSendSize >= SendBufferSize())
@@ -4303,7 +4305,7 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
                     if (!ReadBlockFromDisk(block, (*mi).second, consensusParams))
                         assert(!"cannot load block from disk");
                     if (inv.type == MSG_BLOCK)
-                        pfrom->PushMessage(NetMsgType::BLOCK, block);
+                        SendBlock(block, pfrom); // BUIP017 Datastream compression
 
                     // BUIP010 Xtreme Thinblocks: begin section
                     else if (inv.type == MSG_THINBLOCK || inv.type == MSG_XTHINBLOCK)               
@@ -4325,7 +4327,21 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
                             // however we MUST always provide at least what the remote peer needs
                             typedef std::pair<unsigned int, uint256> PairType;
                             BOOST_FOREACH(PairType& pair, merkleBlock.vMatchedTxn)
-                                pfrom->PushMessage(NetMsgType::TX, block.vtx[pair.first]);
+                            {
+                                if (IsCompressionEnabled(pfrom))
+                                {
+                                    // No need to check if txblob size > max block size. It could never happen here.
+                                    txcat << block.vtx[pair.first];
+                                    nTxConcatenated++;
+                                }
+                                else
+                                    pfrom->PushMessage("tx", block.vtx[pair.first]);
+                            }
+                            if (IsCompressionEnabled(pfrom) && (nTxConcatenated > 0))
+                            {
+                                SendTxCat(pfrom, txcat, nTxConcatenated);
+                                nTxConcatenated = 0;
+                            }
                         }
                         // else
                             // no response
@@ -4346,21 +4362,31 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
             }
             else if (inv.IsKnownType())
             {
+                // BUIP017 Datastream compression - begin section
                 // Send stream from relay memory
                 bool pushed = false;
                 {
-                  CDataStream cd(0,0);
-                  if (1)
+                    CDataStream cd(SER_NETWORK, PROTOCOL_VERSION);
                     {
-                      LOCK(cs_mapRelay);  // BU: We need to release this lock before push message or there is a potential deadlock because cs_vSend is often taken before cs_mapRelay
-                      map<CInv, CDataStream>::iterator mi = mapRelay.find(inv);
-                      if (mi != mapRelay.end()) {
-                        cd = (*mi).second; // I have to copy, because .second may be deleted once lock is released
-                        pushed = true;
-                      }
+                        LOCK(cs_mapRelay);  // BU: We need to release this lock before push message or there is a potential deadlock because cs_vSend is often taken before cs_mapRelay
+                        map<CInv, CDataStream>::iterator mi = mapRelay.find(inv);
+                        if (mi != mapRelay.end())
+                            cd << (*mi).second;
                     }
-                    if (pushed) {
-                        pfrom->PushMessage(inv.GetCommand(), cd);                       
+                    if (cd.size() > 0) {
+                        if (IsCompressionEnabled(pfrom) && (std::string)inv.GetCommand() == "tx") {
+                            txcat << cd;
+                            nTxConcatenated++;
+                            pushed = true;
+                            if (txcat.size() > (maxMessageSizeMultiplier * MAX_STANDARD_TX_SIZE)) {
+                                SendTxCat(pfrom, txcat, nTxConcatenated);
+                                nTxConcatenated = 0;
+                            }
+                        }
+                        else {
+                            pfrom->PushMessage(inv.GetCommand(), cd);
+                            pushed = true;
+                        }
                     }
                 }
                 if (!pushed && inv.type == MSG_TX) {
@@ -4369,10 +4395,23 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
                         CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
                         ss.reserve(1000);
                         ss << tx;
-                        pfrom->PushMessage(NetMsgType::TX, ss);
-                        pushed = true;
+                        if (IsCompressionEnabled(pfrom)) {
+                            txcat << ss;
+                            nTxConcatenated++;
+                            pushed = true;
+                            if (txcat.size() > (maxMessageSizeMultiplier * MAX_STANDARD_TX_SIZE)) {
+                                SendTxCat(pfrom, txcat, nTxConcatenated);
+                                nTxConcatenated = 0;
+                            }
+                        }
+                        else {
+                            pfrom->PushMessage(NetMsgType::TX, ss);
+                            pushed = true;
+                        }
                     }
                 }
+                // BUIP017 Datastream compression - end section
+
                 if (!pushed) {
                     vNotFound.push_back(inv);
                 }
@@ -4382,10 +4421,14 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
             GetMainSignals().Inventory(inv.hash);
 
             // BUIP010 Xtreme Thinblocks: if (inv.type == MSG_BLOCK || inv.type == MSG_FILTERED_BLOCK)
-            if (inv.type == MSG_BLOCK || inv.type == MSG_FILTERED_BLOCK || inv.type == MSG_THINBLOCK || inv.type == MSG_XTHINBLOCK)
-                break;
+            if (!IsCompressionEnabled(pfrom) && (inv.type == MSG_BLOCK || inv.type == MSG_FILTERED_BLOCK || inv.type == MSG_THINBLOCK || inv.type == MSG_XTHINBLOCK))
+                break;  // BUIP017 break only when compression is not enabled.
         }
     }
+    // BUIP017 Datastream compression - begin section
+    if (IsCompressionEnabled(pfrom) && nTxConcatenated > 0)
+        SendTxCat(pfrom, txcat, nTxConcatenated);  // Send concatenated tx's if not already sent
+    // BUIP017 Datastream compression - end section
 
     pfrom->vRecvGetData.erase(pfrom->vRecvGetData.begin(), it);
 
@@ -4721,10 +4764,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
                                     std::vector<uint256> vOrphanHashes;
                                     for (map<uint256, COrphanTx>::iterator mi = mapOrphanTransactions.begin(); mi != mapOrphanTransactions.end(); ++mi)
                                         vOrphanHashes.push_back((*mi).first);
-                                    BuildSeededBloomFilter(filterMemPool, vOrphanHashes);
-                                    ss << inv2;
-                                    ss << filterMemPool;
-                                    pfrom->PushMessage(NetMsgType::GET_XTHIN, ss);
+                                    SendGetXthin(pfrom, inv2.hash, vOrphanHashes); // BUIP017 Datastream Compression
                                     MarkBlockAsInFlight(pfrom->GetId(), inv.hash, chainparams.GetConsensus());
                                     LogPrint("thin", "Requesting Thinblock %s from peer %s (%d)\n", inv2.hash.ToString(), pfrom->addrName.c_str(),pfrom->id);
                                 }
@@ -4737,10 +4777,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
                                     std::vector<uint256> vOrphanHashes;
                                     for (map<uint256, COrphanTx>::iterator mi = mapOrphanTransactions.begin(); mi != mapOrphanTransactions.end(); ++mi)
                                         vOrphanHashes.push_back((*mi).first);
-                                    BuildSeededBloomFilter(filterMemPool, vOrphanHashes);
-                                    ss << inv2;
-                                    ss << filterMemPool;
-                                    pfrom->PushMessage(NetMsgType::GET_XTHIN, ss);
+                                    SendGetXthin(pfrom, inv2.hash, vOrphanHashes); // BUIP017 Datastream Compression
                                     LogPrint("thin", "Requesting Thinblock %s from peer %s (%d)\n", inv2.hash.ToString(), pfrom->addrName.c_str(),pfrom->id);
                                 }
                                 else {
@@ -5034,6 +5071,49 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         FlushStateToDisk(state, FLUSH_STATE_PERIODIC);
     }
 
+    // BUIP017 Datastream compression - begin section
+    else if (strCommand == NetMsgType::CTXCAT || strCommand == NetMsgType::TXCAT)
+    {
+        if (IsCompressionEnabled(pfrom) && strCommand == NetMsgType::CTXCAT)
+        {
+           // Decompress first
+           CDataStream ssRecv(SER_NETWORK,PROTOCOL_VERSION);
+           if (!vRecv.decompress(ssRecv, maxMessageSizeMultiplier * MAX_STANDARD_TX_SIZE)) {
+               LOCK(cs_main);
+               Misbehaving(pfrom->GetId(), 20);
+               LogPrintf("ERROR: CTXCAT decompression failed");
+               return false;
+           }
+
+           uint64_t nTxConcatenated = 0;
+           uint64_t nSizeTxCat = ssRecv.size();
+           while (ssRecv.size() > 0) {
+               CDataStream ss(SER_NETWORK,PROTOCOL_VERSION);
+               CTransaction tx;
+               ssRecv >> tx;
+               ss << tx;
+               nTxConcatenated++;
+               ProcessMessage(pfrom, "tx", ss, nTimeReceived);
+           }
+           CCompressionStats::Update(vRecv.size() - ((nTxConcatenated-1)*76), nSizeTxCat);
+        }
+        else if (strCommand == NetMsgType::TXCAT) {
+           while (vRecv.size() > 0) {
+               CDataStream ss(SER_NETWORK,PROTOCOL_VERSION);
+               CTransaction tx;
+               vRecv >> tx;
+               ss << tx;
+               ProcessMessage(pfrom, "tx", ss, nTimeReceived);
+           }    
+        }
+        else if (strCommand == NetMsgType::CTXCAT) { // They should never send us this unless compression is on
+            LOCK(cs_main);
+            Misbehaving(pfrom->GetId(), 100);
+            return false;
+        }  
+    }
+    // BUIP017 Datastream compression - end section
+
 
     else if (strCommand == NetMsgType::HEADERS && !fImporting && !fReindex) // Ignore headers received while importing
     {
@@ -5138,20 +5218,48 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
     }
 
     // BUIP010 Xtreme Thinblocks: begin section
-    else if (strCommand == NetMsgType::GET_XTHIN && !fImporting && !fReindex) // Ignore blocks received while importing
+    else if ((strCommand == NetMsgType::GET_XTHIN || strCommand == NetMsgType::GET_CXTHIN) && !fImporting && !fReindex) // Ignore blocks received while importing
     {
         CBloomFilter filterMemPool;
         CInv inv;
-        vRecv >> inv >> filterMemPool;
+        if (IsCompressionEnabled(pfrom) && strCommand == NetMsgType::GET_CXTHIN)
+        {
+            // Decompress first
+            CDataStream ssRecv(SER_NETWORK,PROTOCOL_VERSION);
+            if (!vRecv.decompress(ssRecv, excessiveBlockSize)) {
+                LOCK(cs_main);
+                Misbehaving(pfrom->GetId(), 50);
+                LogPrintf("ERROR: GET_CXTHIN decompression failed");
+                return false;
+            }
+            CCompressionStats::Update(vRecv.size(), ssRecv.size());
+            ssRecv >> inv >> filterMemPool;
+        }
+        else
+            vRecv >> inv >> filterMemPool;
 
         LoadFilter(pfrom, &filterMemPool);
         pfrom->vRecvGetData.insert(pfrom->vRecvGetData.end(), inv);
         ProcessGetData(pfrom, chainparams.GetConsensus());
     }
-    else if (strCommand == NetMsgType::XTHINBLOCK  && !fImporting && !fReindex) // Ignore blocks received while importing
+    else if ((strCommand == NetMsgType::XTHINBLOCK || strCommand == NetMsgType::CXTHINBLOCK) && !fImporting && !fReindex) // Ignore blocks received while importing
     {
         CXThinBlock thinBlock;
-        vRecv >> thinBlock;
+        if (IsCompressionEnabled(pfrom) && strCommand == NetMsgType::CXTHINBLOCK)
+        {
+            // Decompress first
+            CDataStream ssRecv(SER_NETWORK,PROTOCOL_VERSION);
+            if (!vRecv.decompress(ssRecv, excessiveBlockSize)) {
+                LOCK(cs_main);
+                Misbehaving(pfrom->GetId(), 50);
+                LogPrintf("ERROR: CXTHINBLOCK decompression failed");
+                return false;
+            }
+            CCompressionStats::Update(vRecv.size(), ssRecv.size());
+            ssRecv >> thinBlock;
+        }
+        else
+            vRecv >> thinBlock;
 
         CInv inv(MSG_BLOCK, thinBlock.header.GetHash());
         int nSizeThinBlock = ::GetSerializeSize(thinBlock, SER_NETWORK, PROTOCOL_VERSION);
@@ -5505,10 +5613,32 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
     // BUIP010 Xtreme Thinblocks: end section
 
 
-    else if (strCommand == NetMsgType::BLOCK && !fImporting && !fReindex) // Ignore blocks received while importing
+    else if ((strCommand == NetMsgType::BLOCK || strCommand == NetMsgType::CBLOCK) && !fImporting && !fReindex) // Ignore blocks received while importing
     {
         CBlock block;
-        vRecv >> block;
+        // BUIP017 Datastream Compression - begin section
+        if (IsCompressionEnabled(pfrom) && strCommand == NetMsgType::CBLOCK)
+        {
+            CDataStream ssRecv(SER_NETWORK,PROTOCOL_VERSION);
+            // Decompress first
+            if (!vRecv.decompress(ssRecv, excessiveBlockSize)) {
+                // They sent us data which could not be decompressed.
+                LOCK(cs_main);
+                Misbehaving(pfrom->GetId(), 20);
+                LogPrintf("ERROR: CBLOCK decompression failed");
+                return false;
+            }
+            CCompressionStats::Update(vRecv.size(), ssRecv.size());
+            ssRecv >> block;
+        }
+        else if (strCommand == NetMsgType::CBLOCK) {  // DOS ban if they send this when compression is off
+            Misbehaving(pfrom->GetId(), 100);
+            LogPrintf("DOS banned - CBLOCK received when compression turned off\n");
+            return false;
+        }
+        else
+            vRecv >> block;
+        // BUIP017 Datastream Compression - end section
 
         CInv inv(MSG_BLOCK, block.GetHash());
         LogPrint("net", "received block %s peer=%d\n", inv.hash.ToString(), pfrom->id);
@@ -6158,8 +6288,20 @@ bool SendMessages(CNode* pto)
             }
             pto->vInventoryToSend = vInvWait;
         }
-        if (!vInv.empty())
+        // BUIP017 Datastream Compression - begin section
+        //if (!vInv.empty())
+        //    pto->PushMessage(NetMsgType::INV, vInv);
+        bool fTestNet = GetBoolArg("-testnet", false);
+        bool fRegTest = GetBoolArg("-regtest", false);
+        if (!vInv.empty() && vInv.size() > 5 && !fTestNet && !fRegTest) // by bundling inv's we get more concatenated tx's in return
             pto->PushMessage(NetMsgType::INV, vInv);
+        else if (!vInv.empty() && (fTestNet || fRegTest))
+            pto->PushMessage(NetMsgType::INV, vInv);
+        else if (!vInv.empty()) {
+            BOOST_FOREACH(const CInv& inv, vInv)
+                pto->vInventoryToSend.push_back(inv);
+        }
+        // BUIP017 Datastream Compression - end section
 
         // Detect whether we're stalling
         nNow = GetTimeMicros();
@@ -6213,10 +6355,7 @@ bool SendMessages(CNode* pto)
                             std::vector<uint256> vOrphanHashes;
                             for (map<uint256, COrphanTx>::iterator mi = mapOrphanTransactions.begin(); mi != mapOrphanTransactions.end(); ++mi)
                                 vOrphanHashes.push_back((*mi).first);
-                            BuildSeededBloomFilter(filterMemPool, vOrphanHashes);
-                            ss << CInv(MSG_XTHINBLOCK, pindex->GetBlockHash());
-                            ss << filterMemPool;
-                            pto->PushMessage(NetMsgType::GET_XTHIN, ss);
+                            SendGetXthin(pto, pindex->GetBlockHash(), vOrphanHashes); // BUIP017 Datastream Compression
                             MarkBlockAsInFlight(pto->GetId(), pindex->GetBlockHash(), consensusParams, pindex);
                             LogPrint("thin", "Requesting thinblock %s (%d) from peer %s (%d)\n", pindex->GetBlockHash().ToString(),
                                      pindex->nHeight, pto->addrName.c_str(), pto->id);
@@ -6229,10 +6368,7 @@ bool SendMessages(CNode* pto)
                             std::vector<uint256> vOrphanHashes;
                             for (map<uint256, COrphanTx>::iterator mi = mapOrphanTransactions.begin(); mi != mapOrphanTransactions.end(); ++mi)
                                 vOrphanHashes.push_back((*mi).first);
-                            BuildSeededBloomFilter(filterMemPool, vOrphanHashes);
-                            ss << CInv(MSG_XTHINBLOCK, pindex->GetBlockHash());
-                            ss << filterMemPool;
-                            pto->PushMessage(NetMsgType::GET_XTHIN, ss);
+                            SendGetXthin(pto, pindex->GetBlockHash(), vOrphanHashes); // BUIP017 Datastream Compression
                             LogPrint("thin", "Requesting Thinblock %s (%d) from peer %s (%d)\n", pindex->GetBlockHash().ToString(),
                                      pindex->nHeight, pto->addrName.c_str(), pto->id);
                         }

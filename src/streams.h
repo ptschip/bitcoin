@@ -22,6 +22,18 @@
 #include <utility>
 #include <vector>
 
+// BUIP017 - Datastream Compression: begin section
+#include "util.h"
+#include <lzo/lzoconf.h>
+#include <lzo/lzo1x.h>
+
+/* portability layer for LZO */
+static const char *progname = NULL;
+#define WANT_LZO_MALLOC 1
+#define WANT_XMALLOC 1
+#include "../examples/portab.h"
+// BUIP017 - Datastream Compression: end section
+
 /** Double ended buffer combining vector and stream-like interfaces.
  *
  * >> and << read and write unformatted data using the above serialization templates.
@@ -148,6 +160,20 @@ public:
         else
             vch.insert(it, first, last);
     }
+    // BUIP017 - Datastream Compression: begin section
+    void insert(iterator it, const unsigned char* first, const unsigned char* last)
+    {
+        assert(last - first >= 0);
+        if (it == vch.begin() + nReadPos && (unsigned int)(last - first) <= nReadPos)
+        {
+            // special case for inserting at the front when there's room
+            nReadPos -= (last - first);
+            memcpy(&vch[nReadPos], &first[0], last - first);
+        }
+        else
+            vch.insert(it, first, last);
+    }
+    // BUIP017 - Datastream Compression: end section
 #endif
 
     iterator erase(iterator it)
@@ -319,16 +345,94 @@ public:
                 j = 0;
         }
     }
+
+    // BUIP017 - Datastream Compression: begin section
+    /**
+     * Compress the datastream
+     *    cmpLevel = Compression level
+     */
+    bool compress(CDataStream& css, int cmpLevel)
+    {
+        int r;
+        lzo_bytep pUncmp;
+        lzo_bytep pCmp;
+        lzo_voidp wrkMem;
+        lzo_uint wrkMemSize;
+        lzo_uint unCmpSize = this->size();
+        lzo_uint cmpSize = unCmpSize + unCmpSize / 16 + 64 + 3;
+
+        // Allocate blocks and the work-memory
+        pUncmp = (lzo_bytep) xmalloc(unCmpSize);
+        pCmp = (lzo_bytep) xmalloc(cmpSize);
+        if (cmpLevel == 1)
+            wrkMemSize = LZO1X_1_MEM_COMPRESS;
+        else
+            wrkMemSize = LZO1X_999_MEM_COMPRESS;
+        wrkMem = (lzo_voidp) xmalloc(wrkMemSize);
+        if (pCmp == NULL || pUncmp == NULL || wrkMem == NULL) {
+            LogPrintf("ERROR: out of memory!!!\n");
+            return false;
+        }
+        memcpy(pUncmp, &(*this->begin()), this->size());
+
+        // Compress
+        if (cmpLevel == 1)
+           r = lzo1x_1_compress(pUncmp, unCmpSize, pCmp, &cmpSize, wrkMem);
+        else
+           r = lzo1x_999_compress(pUncmp, unCmpSize, pCmp, &cmpSize, wrkMem);
+        if (r != LZO_E_OK) {
+            // This should NEVER happen
+            LogPrintf("ERROR: Compression failed - error code %d\n",r);
+            lzo_free(wrkMem);
+            lzo_free(pCmp);
+            lzo_free(pUncmp);
+            return false;
+        }
+        css.insert(css.begin(), (const unsigned char*)&pCmp[0], (const unsigned char*)&pCmp[cmpSize]);
+        LogPrint("compress", "Compressed Data from %lu to %lu bytes\n", unCmpSize, cmpSize);
+        lzo_free(wrkMem);
+        lzo_free(pCmp);
+        lzo_free(pUncmp);
+        return true;
+    }     
+    /**
+     * Uncompress the datastream 
+     *    unCmpSize = Maximum size in bytes of the uncompressed data.  
+     *                It does not need to be exact, just equal to or larger than what you are expecting.
+     */
+    bool decompress(CDataStream& ss, unsigned long unCmpSize)
+    {
+        int r;
+        lzo_bytep pCmp;
+        lzo_bytep pUncmp;
+        lzo_uint cmpSize = this->size();
+																																																			
+        // Allocate blocks
+        pCmp = (lzo_bytep) xmalloc(cmpSize);
+        pUncmp = (lzo_bytep) xmalloc(unCmpSize);
+        if (pCmp == NULL || pUncmp == NULL) {
+            LogPrintf("ERROR: out of memory!!!\n");
+            return false;
+        }
+        memcpy(pCmp, &(*this->begin()), this->size());
+
+        // Decompress
+        r = lzo1x_decompress(pCmp, cmpSize, pUncmp, &unCmpSize, NULL);
+        if (r != LZO_E_OK) {
+            // This should NEVER happen
+            LogPrintf("ERROR: Decompression failed - error code %d\n",r);
+            lzo_free(pCmp);
+            lzo_free(pUncmp);
+            return false;
+        }
+        ss.insert(ss.begin(), (const unsigned char*)&pUncmp[0], (const unsigned char*)&pUncmp[unCmpSize]);
+        LogPrint("compress", "Decompressed Data from %lu to %lu bytes\n", cmpSize, unCmpSize);
+        lzo_free(pCmp);
+        lzo_free(pUncmp);
+        return true;
+    }
+    // BUIP017 - Datastream Compression: end section
 };
-
-
-
-
-
-
-
-
-
 
 /** Non-refcounted RAII wrapper for FILE*
  *

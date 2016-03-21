@@ -157,6 +157,26 @@ extern const char *GET_XBLOCKTX;
  * BUIP010 Xtreme Thinblocks: The get_xthin message transmits a single serialized get_xthin.
  */
 extern const char *GET_XTHIN;
+/**
+ * BUIP017 Datastream Compression: A compressed block message
+ */
+extern const char *CBLOCK;
+/**
+ * BUIP017 Datastream Compression: An uncompressed concatenation of transactions
+ */
+extern const char *TXCAT;
+/**
+ * BUIP017 Datastream Compression: A compressed concatenation of transactions
+ */
+extern const char *CTXCAT;
+/**
+ * BUIP017 Datastream Compression: The cxthinblock message transmits a compressed xthinblock.
+ */
+extern const char *CXTHINBLOCK;
+/**
+ * BUIP017 Datastream Compression: The get_cxthin message transmits a compressed get_xthin.
+ */
+extern const char *GET_CXTHIN;
 
 /**
  * The getaddr message requests an addr message from the receiving node,
@@ -266,6 +286,13 @@ enum {
     // make xthin requests
     NODE_XTHIN = (1 << 4),
     // BUIP010 - Xtreme Thinblocks - end section
+
+    // BUIP017 - Datastream Compression - begin section
+    // NODE_COMPRESS means the node supports Datastream Compression
+    // If this is turned off on either peer then the node will not service compression requests nor  
+    // make compressed requests
+    NODE_COMPRESS = (1 << 5),
+    // BUIP017 - Datastream Compression - end section
 
     // Bits 24-31 are reserved for temporary experiments. Just pick a bit that
     // isn't getting used, or one not being used much, and notify the
