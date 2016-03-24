@@ -944,7 +944,7 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     else if (nLevel > 0) { 
         // Advertise compression as a service
         nLocalServices |= NODE_COMPRESS;
-
+ 
         //initialize the LZO compression library
         if (lzo_init() != LZO_E_OK) {
             LogPrintf("Internal error - lzo_init() failed !!!\n");
@@ -953,6 +953,12 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         }
     }
     // BUIP017 Datastream Compression - end section
+
+    // BUIP010 Xtreme Thinblocks: begin section
+    if (GetBoolArg("-use-thinblocks", true))
+        nLocalServices |= NODE_XTHIN;
+    // BUIP010 Xtreme Thinblocks: begin section
+
 
     // -par=0 means autodetect, but nScriptCheckThreads==0 means no concurrency
     nScriptCheckThreads = GetArg("-par", DEFAULT_SCRIPTCHECK_THREADS);
