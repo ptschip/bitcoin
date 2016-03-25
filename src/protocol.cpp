@@ -47,7 +47,6 @@ const char *CBLOCK="cblock";
 const char *TXCAT="txcat";
 const char *CTXCAT="ctxcat";
 const char *CXTHINBLOCK="cxthinblock";
-const char *GET_CXTHIN="get_cxthin";
 // BUIP017 Datastream Compression - end section
 };
 
@@ -103,7 +102,6 @@ const static std::string allNetMessageTypes[] = {
     NetMsgType::TXCAT,
     NetMsgType::CTXCAT,
     NetMsgType::CXTHINBLOCK,
-    NetMsgType::GET_CXTHIN,
     // BUIP017 Datastream Compression - end section
 };
 const static std::vector<std::string> allNetMessageTypesVec(allNetMessageTypes, allNetMessageTypes+ARRAYLEN(allNetMessageTypes));

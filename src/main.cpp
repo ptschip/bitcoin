@@ -1060,10 +1060,11 @@ bool AcceptToMemoryPoolWorker(CTxMemPool& pool, CValidationState &state, const C
             // -limitfreerelay unit is thousand-bytes-per-minute
             // At default rate it would take over a month to fill 1GB
             LogPrint("mempool", "Rate limit dFreeCount: %g => %g\n", dFreeCount, dFreeCount+nSize);
-            if ((dFreeCount + nSize) >= (nFreeLimit*10*1000 * nLargestBlockSeen / BLOCKSTREAM_CORE_MAX_BLOCK_SIZE))
+            if ((dFreeCount + nSize) >= (nFreeLimit*10*1000 * nLargestBlockSeen / BLOCKSTREAM_CORE_MAX_BLOCK_SIZE)) {
                 return state.DoS(0, 
                        error("AcceptToMemoryPool : free transaction rejected by rate limiter"),
                        REJECT_INSUFFICIENTFEE, "rate limited free transaction");
+            }
             dFreeCount += nSize;
         }
         nLastTime = nNow;
@@ -5220,25 +5221,11 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
     }
 
     // BUIP010 Xtreme Thinblocks: begin section
-    else if ((strCommand == NetMsgType::GET_XTHIN || strCommand == NetMsgType::GET_CXTHIN) && !fImporting && !fReindex) // Ignore blocks received while importing
+    else if (strCommand == NetMsgType::GET_XTHIN && !fImporting && !fReindex) // Ignore blocks received while importing
     {
         CBloomFilter filterMemPool;
         CInv inv;
-        if (IsCompressionEnabled(pfrom) && strCommand == NetMsgType::GET_CXTHIN)
-        {
-            // Decompress first
-            CDataStream ssRecv(SER_NETWORK,PROTOCOL_VERSION);
-            if (!vRecv.decompress(ssRecv, excessiveBlockSize)) {
-                LOCK(cs_main);
-                Misbehaving(pfrom->GetId(), 50);
-                LogPrintf("ERROR: GET_CXTHIN decompression failed");
-                return false;
-            }
-            CCompressionStats::Update(vRecv.size(), ssRecv.size());
-            ssRecv >> inv >> filterMemPool;
-        }
-        else
-            vRecv >> inv >> filterMemPool;
+        vRecv >> inv >> filterMemPool;
 
         LoadFilter(pfrom, &filterMemPool);
         pfrom->vRecvGetData.insert(pfrom->vRecvGetData.end(), inv);

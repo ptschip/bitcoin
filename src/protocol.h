@@ -173,10 +173,6 @@ extern const char *CTXCAT;
  * BUIP017 Datastream Compression: The cxthinblock message transmits a compressed xthinblock.
  */
 extern const char *CXTHINBLOCK;
-/**
- * BUIP017 Datastream Compression: The get_cxthin message transmits a compressed get_xthin.
- */
-extern const char *GET_CXTHIN;
 
 /**
  * The getaddr message requests an addr message from the receiving node,
