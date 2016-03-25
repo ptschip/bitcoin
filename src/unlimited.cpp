@@ -797,7 +797,8 @@ void SendXThinBlock(CBlock &block, CNode* pfrom, const CInv &inv)
             // Only send a thinblock if smaller than a regular block
             int nSizeThinBlock = ::GetSerializeSize(xThinBlock, SER_NETWORK, PROTOCOL_VERSION);
             if (nSizeThinBlock < nSizeBlock) {
-                if (IsCompressionEnabled(pfrom)) {
+                // Only compress an xthin if there are more than 2 transactions as it will generally not compress well
+                if (IsCompressionEnabled(pfrom) && (xThinBlock.vMissingTx.size() > 2)) {
                     CDataStream cxThinBlock(SER_NETWORK, PROTOCOL_VERSION);
                     CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
                     ss << xThinBlock;
@@ -1057,22 +1058,7 @@ void SendGetXthin(CNode* pfrom, const uint256 &hash, std::vector<uint256> &vOrph
     BuildSeededBloomFilter(filterMemPool, vOrphanHashes);
     ss << CInv(MSG_XTHINBLOCK, hash);
     ss << filterMemPool;
- 
-    if (IsCompressionEnabled(pfrom)) {
-        CDataStream ssGetXthin(SER_NETWORK, PROTOCOL_VERSION);
-        if (ss.compress(ssGetXthin,
-            GetArg("-compressionlevel", DEFAULT_COMPRESSION_LEVEL))) {
-            pfrom->PushMessage(NetMsgType::GET_CXTHIN, ssGetXthin);
-            CCompressionStats::Update(ssGetXthin.size(), ss.size());
-            LogPrint("compress", "Bloom filter and Inv compressed from %d to %d\n", ss.size(), ssGetXthin.size());
-        }
-        else {
-            pfrom->PushMessage(NetMsgType::GET_XTHIN, ss);
-            LogPrintf("ERROR: GET_CXTHIN Compression failed\n");
-        }
-    }
-    else
-        pfrom->PushMessage(NetMsgType::GET_XTHIN, ss);
+    pfrom->PushMessage(NetMsgType::GET_XTHIN, ss);
 }
 
 // Start statistics at zero
