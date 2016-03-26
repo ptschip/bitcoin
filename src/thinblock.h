@@ -12,6 +12,7 @@
 #include "stat.h"
 
 #include <vector>
+#include <map>
 
 class CThinBlock
 {
@@ -109,9 +110,12 @@ private:
 	static CStatHistory<uint64_t> nOriginalSize;
 	static CStatHistory<uint64_t> nThinSize;
 	static CStatHistory<uint64_t> nBlocks;
+        static std::map<int64_t, std::pair<uint64_t, uint64_t> > mapThinBlocks;
+
 public:
 	static void Update(uint64_t nThinBlockSize, uint64_t nOriginalBlockSize);
 	static std::string ToString();
+        static std::string PercentToString();
 };
 
 

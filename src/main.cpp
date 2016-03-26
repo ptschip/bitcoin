@@ -4944,6 +4944,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             return true;
         }
 
+        CCompressionStats::PotentialUpdate(vRecv.size());  // BUIP017 Datastream Compression
         vector<uint256> vWorkQueue;
         vector<uint256> vEraseQueue;
         CTransaction tx;
@@ -5099,6 +5100,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
            CCompressionStats::Update(vRecv.size() - ((nTxConcatenated-1)*76), nSizeTxCat);
         }
         else if (strCommand == NetMsgType::TXCAT) {
+           CCompressionStats::PotentialUpdate(vRecv.size());
            while (vRecv.size() > 0) {
                CDataStream ss(SER_NETWORK,PROTOCOL_VERSION);
                CTransaction tx;
@@ -5245,8 +5247,10 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             CCompressionStats::Update(vRecv.size(), ssRecv.size());
             ssRecv >> thinBlock;
         }
-        else
+        else {
             vRecv >> thinBlock;
+            CCompressionStats::PotentialUpdate(::GetSerializeSize(thinBlock, SER_NETWORK, PROTOCOL_VERSION)); // BUIP017 Datastream Compression
+        }
 
         CInv inv(MSG_BLOCK, thinBlock.header.GetHash());
         int nSizeThinBlock = ::GetSerializeSize(thinBlock, SER_NETWORK, PROTOCOL_VERSION);
@@ -5623,8 +5627,10 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             LogPrintf("DOS banned - CBLOCK received when compression turned off\n");
             return false;
         }
-        else
+        else {
             vRecv >> block;
+            CCompressionStats::PotentialUpdate(::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION));
+        }
         // BUIP017 Datastream Compression - end section
 
         CInv inv(MSG_BLOCK, block.GetHash());
