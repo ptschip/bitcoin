@@ -808,19 +808,18 @@ void SendXThinBlock(CBlock &block, CNode* pfrom, const CInv &inv)
                     if (ss.compress(cxThinBlock,
                         GetArg("-compressionlevel", DEFAULT_COMPRESSION_LEVEL))) {
                         if (cxThinBlock.size() < nSizeThinBlock) {
-                            pfrom->PushMessage(NetMsgType::CXTHINBLOCK, cxThinBlock);
+                            CCompressionStats::Update(cxThinBlock.size(), nSizeThinBlock);
+                            CThinBlockStats::UpdateOutBound(nSizeThinBlock, nSizeBlock);
                             nSizeThinBlock = cxThinBlock.size();
+                            pfrom->PushMessage(NetMsgType::CXTHINBLOCK, cxThinBlock);
+                            return;
                         }
-                        else
-                            pfrom->PushMessage(NetMsgType::XTHINBLOCK, ss);
                     }
-                    else {
-                        pfrom->PushMessage(NetMsgType::XTHINBLOCK, ss);
+                    else
                         LogPrintf("ERROR: CXTHINBLOCK compression failed\n");
-                    }
                 }
-                else
-                    pfrom->PushMessage(NetMsgType::XTHINBLOCK, xThinBlock);
+
+                pfrom->PushMessage(NetMsgType::XTHINBLOCK, xThinBlock);
                 LogPrint("thin", "Sent xthinblock - size: %d vs block size: %d => tx hashes: %d transactions: %d  peerid=%d\n", nSizeThinBlock, nSizeBlock, xThinBlock.vTxHashes.size(), xThinBlock.vMissingTx.size(), pfrom->id);
                 CThinBlockStats::UpdateOutBound(nSizeThinBlock, nSizeBlock);
                 LogPrint("thin", "thin block stats: %s\n", CThinBlockStats::ToString());
@@ -839,6 +838,7 @@ void SendXThinBlock(CBlock &block, CNode* pfrom, const CInv &inv)
         if (nSizeThinBlock < nSizeBlock) { // Only send a thinblock if smaller than a regular block
             CThinBlockStats::UpdateOutBound(nSizeThinBlock, nSizeBlock);
             pfrom->PushMessage(NetMsgType::THINBLOCK, thinBlock);
+            CThinBlockStats::UpdateOutBound(nSizeThinBlock, nSizeBlock);
             LogPrint("thin", "Sent thinblock - size: %d vs block size: %d => tx hashes: %d transactions: %d  peerid=%d\n", nSizeThinBlock, nSizeBlock, thinBlock.vTxHashes.size(), thinBlock.vMissingTx.size(), pfrom->id);
         }
         else {
@@ -1003,55 +1003,45 @@ bool IsCompressionEnabled(CNode* pfrom)
 
 void SendBlock(CBlock &block, CNode* pfrom)
 {
+    uint64_t nBlockSize = ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION);
     if (IsCompressionEnabled(pfrom)) {
         CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
         CDataStream cblock(SER_NETWORK, PROTOCOL_VERSION);
         ss << block;
         if (ss.compress(cblock,
             GetArg("-compressionlevel", DEFAULT_COMPRESSION_LEVEL))) {
-            uint64_t nBlockSize = ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION);
             if (cblock.size() < nBlockSize) {
                 pfrom->PushMessage(NetMsgType::CBLOCK, cblock);
                 CCompressionStats::Update(cblock.size(), nBlockSize);
+                return;
             }
-            else
-                pfrom->PushMessage(NetMsgType::BLOCK, block);
         }
-        else {
-            pfrom->PushMessage(NetMsgType::BLOCK, block);
+        else
             LogPrintf("ERROR: Block Compression failed\n");
-        }
     }
-    else
-        pfrom->PushMessage(NetMsgType::BLOCK, block);
+    pfrom->PushMessage(NetMsgType::BLOCK, block);
+    CCompressionStats::PotentialUpdate(nBlockSize);
 }
 
 void SendTxCat(CNode* pfrom, CDataStream &txcat, uint64_t nTxConcatenated)
 {
     LogPrint("compress", "TxCat has %d transactions\n", nTxConcatenated);
-    if (nTxConcatenated > 0) {
-        //Do not compress if below the minimum size
-        if (txcat.size() < MIN_TX_COMPRESS_SIZE)
-            pfrom->PushMessage(NetMsgType::TXCAT, txcat);
-        else {
-            // Compress concatenated tx's
-            CDataStream ctxcat(SER_NETWORK, PROTOCOL_VERSION);
-            if (txcat.compress(ctxcat,
-                GetArg("-compressionlevel", DEFAULT_COMPRESSION_LEVEL))) {
-                if(ctxcat.size() < txcat.size()) {
-                    pfrom->PushMessage(NetMsgType::CTXCAT, ctxcat);
-                    CCompressionStats::Update(ctxcat.size() - ((nTxConcatenated-1)*76), txcat.size());
-                }
-                else
-                    //Send uncompressed if smaller than compressed
-                    pfrom->PushMessage(NetMsgType::TXCAT, txcat);
-            }
-            else {
-                pfrom->PushMessage(NetMsgType::TXCAT, txcat);
-                LogPrintf("ERROR: TXCAT Compression failed\n");
+    // compress only if above the minimum size
+    if (txcat.size() > MIN_TX_COMPRESS_SIZE) {
+        CDataStream ctxcat(SER_NETWORK, PROTOCOL_VERSION);
+        if (txcat.compress(ctxcat,
+            GetArg("-compressionlevel", DEFAULT_COMPRESSION_LEVEL))) {
+            if(ctxcat.size() < txcat.size()) {
+                pfrom->PushMessage(NetMsgType::CTXCAT, ctxcat);
+                CCompressionStats::Update(ctxcat.size() - ((nTxConcatenated-1)*76), txcat.size());
+                return;
             }
         }
+        else
+            LogPrintf("ERROR: TXCAT Compression failed\n");
     }
+    pfrom->PushMessage(NetMsgType::TXCAT, txcat);
+    CCompressionStats::PotentialUpdate(txcat.size());
 }
 
 void SendGetXthin(CNode* pfrom, const uint256 &hash, std::vector<uint256> &vOrphanHashes)
@@ -1068,26 +1058,62 @@ void SendGetXthin(CNode* pfrom, const uint256 &hash, std::vector<uint256> &vOrph
 // Start statistics at zero
 CStatHistory<uint64_t> CCompressionStats::nOriginalSize("messageSize", STAT_OP_SUM | STAT_KEEP);
 CStatHistory<uint64_t> CCompressionStats::nCompressedSize("compressedSize", STAT_OP_SUM | STAT_KEEP);
-CStatHistory<uint64_t> CCompressionStats::nMessages("numMessages", STAT_OP_SUM | STAT_KEEP);
+CStatHistory<uint64_t> CCompressionStats::nPotentialOriginalSize("potentialMessageSize", STAT_OP_SUM | STAT_KEEP);
 void CCompressionStats::Update(uint64_t nCompressedMessageSize, uint64_t nOriginalMessageSize)
 {
-	CCompressionStats::nOriginalSize += nOriginalMessageSize;
-	CCompressionStats::nCompressedSize += nCompressedMessageSize;
-	CCompressionStats::nMessages += 1;
+    CCompressionStats::nOriginalSize += nOriginalMessageSize;
+    CCompressionStats::nCompressedSize += nCompressedMessageSize;
 }
 std::string CCompressionStats::ToString()
 {
-	static const char *units[] = { "B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"};
-	int i = 0;
-	double size = double(CCompressionStats::nOriginalSize() - CCompressionStats::nCompressedSize());
-	while (size > 1000) {
-		size /= 1000;
-		i++;
-	}
+    static const char *units[] = { "B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"};
+    int i = 0;
+    double size = double(CCompressionStats::nOriginalSize() - CCompressionStats::nCompressedSize());
+    while (size > 1000) {
+	size /= 1000;
+	i++;
+    }
 
-	std::ostringstream ss;
-	ss << std::fixed << std::setprecision(2);
-	ss << "Compression has saved " << size << units[i] << " of bandwidth";
-	return ss.str();
+    std::ostringstream ss;
+    ss << std::fixed << std::setprecision(2);
+    ss << "Datastream Compression has saved " << size << units[i] << " of bandwidth";
+    return ss.str();
 }
+std::string CCompressionStats::PercentToString()
+{
+    double nCompressionRate = 0;
+    if (CCompressionStats::nOriginalSize() > 0) {
+        nCompressionRate = 100 - (100 * (double)CCompressionStats::nCompressedSize() / CCompressionStats::nOriginalSize());
+    }
+
+    std::ostringstream ss;
+    ss << std::fixed << std::setprecision(1);
+    ss << "Datastream Compression : " << nCompressionRate << "%";
+    return ss.str();
+}
+void CCompressionStats::PotentialUpdate(int64_t nOriginalMessageSize)
+{
+    CCompressionStats::nPotentialOriginalSize += nOriginalMessageSize;
+}
+std::string CCompressionStats::PotentialToString()
+{
+    double nCompressionRate = 15; // This is a basic approximation to start with in the case of no connected peers that support compression.
+    if (CCompressionStats::nOriginalSize() > 0) {
+        nCompressionRate = 100 - (100 * (double)CCompressionStats::nCompressedSize() / CCompressionStats::nOriginalSize());
+    }
+
+    static const char *units[] = { "B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"};
+    int i = 0;
+    double size = double(CCompressionStats::nPotentialOriginalSize()) * nCompressionRate / 100;
+    while (size > 1000) {
+	size /= 1000;
+	i++;
+    }
+
+    std::ostringstream ss;
+    ss << std::fixed << std::setprecision(2);
+    ss << "Potential Compression could save an additional " << size << units[i] << " of bandwidth";
+    return ss.str();
+}
+
 

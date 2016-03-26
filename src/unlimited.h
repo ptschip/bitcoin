@@ -128,18 +128,20 @@ extern void SendBlock(CBlock &block, CNode* pfrom);
 extern void SendTxCat(CNode* pfrom, CDataStream &txcat, uint64_t nTxConcatented);
 extern void SendGetXthin(CNode* pfrom, const uint256 &hash, std::vector<uint256> &vOrphanHashes);
 
-// This class stores statistics for message compression.
+// This class stores statistics for datastream compression.
 class CCompressionStats
 {
     private:
 	static CStatHistory<uint64_t> nOriginalSize;
 	static CStatHistory<uint64_t> nCompressedSize;
-	static CStatHistory<uint64_t> nMessages;
+	static CStatHistory<uint64_t> nPotentialOriginalSize;
     public:
 	static void Update(uint64_t nCompressedMessageSize, uint64_t nOriginalMessageSize);
+	static void PotentialUpdate(int64_t nOriginalMessageSize);
 	static std::string ToString();
+        static std::string PercentToString();
+	static std::string PotentialToString();
 };
-
 
 // Handle receiving and sending messages from thin block capable nodes only (so that thin block nodes capable nodes are preferred)
 extern bool ThinBlockMessageHandler(std::vector<CNode*>& vNodesCopy);

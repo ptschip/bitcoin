@@ -437,8 +437,11 @@ static UniValue GetCompressionStats()
     UniValue obj(UniValue::VOBJ);
     bool enabled = nLocalServices & NODE_COMPRESS;
     obj.push_back(Pair("enabled", enabled));
+    obj.push_back(Pair("cmp level", GetArg("-compressionlevel", DEFAULT_COMPRESSION_LEVEL)));
     if (enabled) {
         obj.push_back(Pair("summary", CCompressionStats::ToString()));
+        obj.push_back(Pair("summary", CCompressionStats::PercentToString()));
+        obj.push_back(Pair("summary", CCompressionStats::PotentialToString()));
     }
     return obj;
 }
