@@ -1058,11 +1058,10 @@ bool AcceptToMemoryPoolWorker(CTxMemPool& pool, CValidationState &state, const C
             // -limitfreerelay unit is thousand-bytes-per-minute
             // At default rate it would take over a month to fill 1GB
             LogPrint("mempool", "Rate limit dFreeCount: %g => %g\n", dFreeCount, dFreeCount+nSize);
-            if ((dFreeCount + nSize) >= (nFreeLimit*10*1000 * nLargestBlockSeen / BLOCKSTREAM_CORE_MAX_BLOCK_SIZE)) {
+            if ((dFreeCount + nSize) >= (nFreeLimit*10*1000 * nLargestBlockSeen / BLOCKSTREAM_CORE_MAX_BLOCK_SIZE))
                 return state.DoS(0, 
                        error("AcceptToMemoryPool : free transaction rejected by rate limiter"),
                        REJECT_INSUFFICIENTFEE, "rate limited free transaction");
-            }
             dFreeCount += nSize;
         }
         nLastTime = nNow;
@@ -4423,7 +4422,7 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
 
             // BUIP010 Xtreme Thinblocks: if (inv.type == MSG_BLOCK || inv.type == MSG_FILTERED_BLOCK)
             if (!IsCompressionEnabled(pfrom) && (inv.type == MSG_BLOCK || inv.type == MSG_FILTERED_BLOCK || inv.type == MSG_THINBLOCK || inv.type == MSG_XTHINBLOCK))
-                break;  // BUIP017 break only when compression is not enabled.
+                break;  // BUIP017 break when compression is not enabled.
         }
     }
     // BUIP017 Datastream compression - begin section

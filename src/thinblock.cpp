@@ -7,8 +7,6 @@
 #include <sstream>
 #include <iomanip>
 
-#include "util.h"
-
 // Start statistics at zero
 CStatHistory<uint64_t> CThinBlockStats::nOriginalSize("thin/blockSize",STAT_OP_SUM | STAT_KEEP);
 CStatHistory<uint64_t> CThinBlockStats::nThinSize("thin/thinSize",STAT_OP_SUM | STAT_KEEP);

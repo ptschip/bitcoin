@@ -785,6 +785,7 @@ void SendXThinBlock(CBlock &block, CNode* pfrom, const CInv &inv)
             int nSizeThinBlock = ::GetSerializeSize(xThinBlock, SER_NETWORK, PROTOCOL_VERSION);
             if (nSizeThinBlock < nSizeBlock) {
                 pfrom->PushMessage(NetMsgType::THINBLOCK, thinBlock);
+                CThinBlockStats::Update(nSizeThinBlock, nSizeBlock);
                 LogPrint("thin", "TX HASH COLLISION: Sent thinblock - size: %d vs block size: %d => tx hashes: %d transactions: %d  peerid=%d\n", nSizeThinBlock, nSizeBlock, xThinBlock.vTxHashes.size(), xThinBlock.vMissingTx.size(), pfrom->id);
             }
             else {
@@ -805,22 +806,20 @@ void SendXThinBlock(CBlock &block, CNode* pfrom, const CInv &inv)
                     if (ss.compress(cxThinBlock,
                         GetArg("-compressionlevel", DEFAULT_COMPRESSION_LEVEL))) {
                         if (cxThinBlock.size() < nSizeThinBlock) {
-                            pfrom->PushMessage(NetMsgType::CXTHINBLOCK, cxThinBlock);
+                            CCompressionStats::Update(cxThinBlock.size(), nSizeThinBlock);
+                            CThinBlockStats::Update(nSizeThinBlock, nSizeBlock);
                             nSizeThinBlock = cxThinBlock.size();
+                            pfrom->PushMessage(NetMsgType::CXTHINBLOCK, cxThinBlock);
+                            return;
                         }
-                        else
-                            pfrom->PushMessage(NetMsgType::XTHINBLOCK, ss);
                     }
-                    else {
-                        pfrom->PushMessage(NetMsgType::XTHINBLOCK, ss);
+                    else
                         LogPrintf("ERROR: CXTHINBLOCK compression failed\n");
-                    }
                 }
-                else
-                    pfrom->PushMessage(NetMsgType::XTHINBLOCK, xThinBlock);
+
+                pfrom->PushMessage(NetMsgType::XTHINBLOCK, xThinBlock);
                 LogPrint("thin", "Sent xthinblock - size: %d vs block size: %d => tx hashes: %d transactions: %d  peerid=%d\n", nSizeThinBlock, nSizeBlock, xThinBlock.vTxHashes.size(), xThinBlock.vMissingTx.size(), pfrom->id);
                 CThinBlockStats::Update(nSizeThinBlock, nSizeBlock);
-                LogPrint("thin", "thin block stats: %s\n", CThinBlockStats::ToString());
             }
             else {
                 SendBlock(block, pfrom); //BUIP017 Datastream compression
@@ -835,6 +834,7 @@ void SendXThinBlock(CBlock &block, CNode* pfrom, const CInv &inv)
         int nSizeThinBlock = ::GetSerializeSize(thinBlock, SER_NETWORK, PROTOCOL_VERSION);
         if (nSizeThinBlock < nSizeBlock) { // Only send a thinblock if smaller than a regular block
             pfrom->PushMessage(NetMsgType::THINBLOCK, thinBlock);
+            CThinBlockStats::Update(nSizeThinBlock, nSizeBlock);
             LogPrint("thin", "Sent thinblock - size: %d vs block size: %d => tx hashes: %d transactions: %d  peerid=%d\n", nSizeThinBlock, nSizeBlock, thinBlock.vTxHashes.size(), thinBlock.vMissingTx.size(), pfrom->id);
         }
         else {

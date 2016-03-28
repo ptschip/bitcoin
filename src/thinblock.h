@@ -11,8 +11,6 @@
 #include "bloom.h"
 #include "stat.h"
 
-#include <vector>
-#include <map>
 
 class CThinBlock
 {
