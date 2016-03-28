@@ -4379,7 +4379,7 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
                             txcat << cd;
                             nTxConcatenated++;
                             pushed = true;
-                            if (txcat.size() > (maxMessageSizeMultiplier * MAX_STANDARD_TX_SIZE)) {
+                            if (txcat.size() > (nLargestBlockSeen - MAX_STANDARD_TX_SIZE)) {
                                 SendTxCat(pfrom, txcat, nTxConcatenated);
                                 nTxConcatenated = 0;
                             }
@@ -4400,7 +4400,7 @@ void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParam
                             txcat << ss;
                             nTxConcatenated++;
                             pushed = true;
-                            if (txcat.size() > (maxMessageSizeMultiplier * MAX_STANDARD_TX_SIZE)) {
+                            if (txcat.size() > (nLargestBlockSeen - MAX_STANDARD_TX_SIZE)) {
                                 SendTxCat(pfrom, txcat, nTxConcatenated);
                                 nTxConcatenated = 0;
                             }
@@ -5080,7 +5080,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         {
            // Decompress first
            CDataStream ssRecv(SER_NETWORK,PROTOCOL_VERSION);
-           if (!vRecv.decompress(ssRecv, maxMessageSizeMultiplier * MAX_STANDARD_TX_SIZE)) {
+           if (!vRecv.decompress(ssRecv, nLargestBlockSeen)) {
                LOCK(cs_main);
                Misbehaving(pfrom->GetId(), 20);
                LogPrintf("ERROR: CTXCAT decompression failed");

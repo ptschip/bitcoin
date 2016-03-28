@@ -1011,27 +1011,19 @@ void SendBlock(CBlock &block, CNode* pfrom)
                 CCompressionStats::Update(cblock.size(), nBlockSize);
                 return;
             }
-            else
-                pfrom->PushMessage(NetMsgType::BLOCK, block);
         }
-        else {
-            pfrom->PushMessage(NetMsgType::BLOCK, block);
+        else
             LogPrintf("ERROR: Block Compression failed\n");
-        }
     }
-    else
-        pfrom->PushMessage(NetMsgType::BLOCK, block);
+    pfrom->PushMessage(NetMsgType::BLOCK, block);
     CCompressionStats::PotentialUpdate(nBlockSize);
 }
 
 void SendTxCat(CNode* pfrom, CDataStream &txcat, uint64_t nTxConcatenated)
 {
     LogPrint("compress", "TxCat has %d transactions\n", nTxConcatenated);
-    //Do not compress if below the minimum size
-    if (txcat.size() < MIN_TX_COMPRESS_SIZE)
-        pfrom->PushMessage(NetMsgType::TXCAT, txcat);
-    else {
-        // Compress concatenated tx's
+    // compress only if above the minimum size
+    if (txcat.size() > MIN_TX_COMPRESS_SIZE) {
         CDataStream ctxcat(SER_NETWORK, PROTOCOL_VERSION);
         if (txcat.compress(ctxcat,
             GetArg("-compressionlevel", DEFAULT_COMPRESSION_LEVEL))) {
@@ -1040,15 +1032,11 @@ void SendTxCat(CNode* pfrom, CDataStream &txcat, uint64_t nTxConcatenated)
                 CCompressionStats::Update(ctxcat.size() - ((nTxConcatenated-1)*76), txcat.size());
                 return;
             }
-            else
-                //Send uncompressed if smaller than compressed
-                pfrom->PushMessage(NetMsgType::TXCAT, txcat);
         }
-        else {
-            pfrom->PushMessage(NetMsgType::TXCAT, txcat);
+        else
             LogPrintf("ERROR: TXCAT Compression failed\n");
-        }
     }
+    pfrom->PushMessage(NetMsgType::TXCAT, txcat);
     CCompressionStats::PotentialUpdate(txcat.size());
 }
 
