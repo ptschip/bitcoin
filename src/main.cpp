@@ -5097,9 +5097,12 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
                ProcessMessage(pfrom, "tx", ss, nTimeReceived);
            }
            CCompressionStats::Update(vRecv.size() - ((nTxConcatenated-1)*76), nSizeTxCat);
+
+           // We have to subtract the potential amount here or we will end up adding it twice when each tx was processed
+           //CCompressionStats::PotentialUpdate(0 - nSizeTxCat);  needs fixing...
         }
         else if (strCommand == NetMsgType::TXCAT) {
-           CCompressionStats::PotentialUpdate(vRecv.size());
+           // CCompressionStats::PotentialUpdate(vRecv.size()); we do not update this has since it gets updated again when the tx is processed
            while (vRecv.size() > 0) {
                CDataStream ss(SER_NETWORK,PROTOCOL_VERSION);
                CTransaction tx;

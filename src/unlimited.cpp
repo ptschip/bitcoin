@@ -1087,13 +1087,13 @@ std::string CCompressionStats::PercentToString()
     ss << "Compression is: " << nCompressionRate << "%";
     return ss.str();
 }
-void CCompressionStats::PotentialUpdate(uint64_t nOriginalMessageSize)
+void CCompressionStats::PotentialUpdate(int64_t nOriginalMessageSize)
 {
     CCompressionStats::nPotentialOriginalSize += nOriginalMessageSize;
 }
 std::string CCompressionStats::PotentialToString()
 {
-    double nCompressionRate = 0;
+    double nCompressionRate = 15; // This is a basic approximation to start with in the case of no connected peers that support compression.
     if (CCompressionStats::nOriginalSize() > 0) {
         nCompressionRate = 100 - (100 * (double)CCompressionStats::nCompressedSize() / CCompressionStats::nOriginalSize());
     }

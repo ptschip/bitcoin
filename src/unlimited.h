@@ -137,7 +137,7 @@ class CCompressionStats
 	static CStatHistory<uint64_t> nPotentialOriginalSize;
     public:
 	static void Update(uint64_t nCompressedMessageSize, uint64_t nOriginalMessageSize);
-	static void PotentialUpdate(uint64_t nOriginalMessageSize);
+	static void PotentialUpdate(int64_t nOriginalMessageSize);
 	static std::string ToString();
         static std::string PercentToString();
 	static std::string PotentialToString();
