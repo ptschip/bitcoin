@@ -48,9 +48,11 @@ const char *TXCAT="txcat";
 const char *CTXCAT="ctxcat";
 const char *CXTHINBLOCK="cxthinblock";
 // BUIP017 Datastream Compression - end section
+// BUIP018 XInv: begin
+const char *XINV="xinv";
+// BUIP018 XInv: end
 };
 
-/** These are inventory type messages */
 static const char* ppszTypeName[] =
 {
     "ERROR", // Should never occur
@@ -60,8 +62,12 @@ static const char* ppszTypeName[] =
     // BUIP010 Xtreme Thinblocks - begin section
     NetMsgType::THINBLOCK,
     NetMsgType::XTHINBLOCK,
+    NetMsgType::XBLOCKTX,
+    NetMsgType::GET_XBLOCKTX,
     // BUIP010 Xtreme Thinblocks - end section
 };
+
+
 
 /** All known message types. Keep this in the same order as the list of
  * messages above and in protocol.h.
@@ -102,6 +108,10 @@ const static std::string allNetMessageTypes[] = {
     NetMsgType::CTXCAT,
     NetMsgType::CXTHINBLOCK,
     // BUIP017 Datastream Compression - end section
+    // BUIP018 XInv: begin
+    NetMsgType::XINV,
+    // BUIP018 XInv: end
+
 };
 const static std::vector<std::string> allNetMessageTypesVec(allNetMessageTypes, allNetMessageTypes+ARRAYLEN(allNetMessageTypes));
 

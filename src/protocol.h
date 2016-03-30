@@ -173,6 +173,11 @@ extern const char *CTXCAT;
  * BUIP017 Datastream Compression: The cxthinblock message transmits a compressed xthinblock.
  */
 extern const char *CXTHINBLOCK;
+/**
+ * BUIP018 XInv: The XInv message is a compressed inventory message which sends only a part of the 
+ * transaction hash rather than the entire hash.
+ */
+extern const char *XINV;
 
 /**
  * The getaddr message requests an addr message from the receiving node,
@@ -366,6 +371,7 @@ public:
 public:
     int type;
     uint256 hash;
+    uint64_t cheapHash;
 };
 
 enum {
@@ -380,6 +386,9 @@ enum {
     // BUIP010 Xtreme Thinblocks: an Xtreme thin block contains the first 8 bytes of all the tx hashes 
     // and also provides the missing transactions that are needed at the other end to reconstruct the block
     MSG_XTHINBLOCK,
+    // BUIP018 XInv: An XInv contains just a portion of the transaction hash.  This is done in order to save
+    // bandwidth
+    MSG_XINV,
 };
 
 #endif // BITCOIN_PROTOCOL_H
