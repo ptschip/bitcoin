@@ -152,6 +152,6 @@ extern CStatHistory<unsigned int, MinValMax<unsigned int> > txAdded;
 extern CStatHistory<uint64_t, MinValMax<uint64_t> > poolSize;
 
 // BUIP018 XInv
-extern void IsXInvEnabled(CNode* pfrom);
+extern bool IsXInvEnabled(CNode* pfrom);
 
 #endif
