@@ -1,3 +1,13 @@
+case ${OS} in
+   *Windows*)
+    # This m4 will only be used if a system copy cannot be found. This is helpful
+    # on systems where autotools are installed but the pkg-config macros are not in
+    # a default location. It is currently used for building on OSX where autotools
+    # are preinstalled but pkg-config comes from macports or homebrew. It should
+    # probably be removed when building on <= 10.6 is no longer supported.
+    m4_include([pkg.m4])
+esac
+
 dnl require autoconf 2.60 (AS_ECHO/AS_ECHO_N)
 AC_PREREQ([2.60])
 define(_CLIENT_VERSION_MAJOR, 0)
