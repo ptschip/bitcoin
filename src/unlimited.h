@@ -151,4 +151,7 @@ extern std::map<uint256, uint64_t> mapThinBlockTimer;
 extern CStatHistory<unsigned int, MinValMax<unsigned int> > txAdded;
 extern CStatHistory<uint64_t, MinValMax<uint64_t> > poolSize;
 
+// BUIP018 XInv
+extern void IsXInvEnabled(CNode* pfrom);
+
 #endif

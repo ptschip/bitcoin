@@ -126,6 +126,13 @@ public:
         return ReadLE64(data);
     }
 
+    // BUIP018 XInv: begin section
+    uint32_t GetVeryCheapHash() const
+    {
+        return ReadLE32(data);
+    }
+    // BUIP018 XInv: end section
+
     /** A more secure, salted hash function.
      * @note This hash is not stable between little and big endian.
      */

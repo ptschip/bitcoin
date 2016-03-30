@@ -959,6 +959,10 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         nLocalServices |= NODE_XTHIN;
     // BUIP010 Xtreme Thinblocks: begin section
 
+    // BUIP018 XInv: begin section
+    if (GetBoolArg("-use-xinv", true))
+        nLocalServices |= NODE_XINV;
+    // BUIP018 XInv: begin section
 
     // -par=0 means autodetect, but nScriptCheckThreads==0 means no concurrency
     nScriptCheckThreads = GetArg("-par", DEFAULT_SCRIPTCHECK_THREADS);

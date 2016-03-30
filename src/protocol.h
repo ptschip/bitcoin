@@ -290,6 +290,13 @@ enum {
     NODE_COMPRESS = (1 << 5),
     // BUIP017 - Datastream Compression - end section
 
+    // BUIP018 - XInv - begin section
+    // NODE_XINV means the node supports Inventory message compression
+    // If this is turned off on either peer then the node will not service XInv requests nor  
+    // make XInv requests
+    NODE_XINV = (1 << 6),
+    // BUIP018 - XInv - end section
+
     // Bits 24-31 are reserved for temporary experiments. Just pick a bit that
     // isn't getting used, or one not being used much, and notify the
     // bitcoin-development mailing list. Remember that service bits are just

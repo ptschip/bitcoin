@@ -83,6 +83,7 @@ std::string UnlimitedCmdLineHelp()
     strUsage += HelpMessageOpt("-minlimitertxfee=<amt>", strprintf(_("Fees (in satoshi/byte) smaller than this are considered zero fee and subject to -limitfreerelay (default: %s)"), DEFAULT_MINLIMITERTXFEE));
     strUsage += HelpMessageOpt("-maxlimitertxfee=<amt>", strprintf(_("Fees (in satoshi/byte) larger than this are always relayed (default: %s)"), DEFAULT_MAXLIMITERTXFEE));
     strUsage += HelpMessageOpt("-compressionlevel=<n>", strprintf(_("Set compression level (0 to 2) 0 = no compression, 2 = max compression (default: %d)"), DEFAULT_COMPRESSION_LEVEL));
+    strUsage += HelpMessageOpt("-use-xinv=<n>", strprintf(_("Turn XInv on or off (off: 0, on: 1, default: %d)"), 1));
     return strUsage;
 }
 
@@ -1112,4 +1113,12 @@ std::string CCompressionStats::PotentialToString()
     return ss.str();
 }
 
-
+/**
+ *  BUIP018 XInv Section 
+ */
+bool IsXInvEnabled(CNode* pfrom)
+{
+   if ((pfrom->nServices & NODE_XINV) && (nLocalServices & NODE_XINV))
+       return true;
+   return false;
+}
