@@ -16,6 +16,7 @@
 #include "streams.h"
 #include "sync.h"
 #include "uint256.h"
+#include "unlimited.h"
 
 #include <deque>
 #include <stdint.h>
@@ -99,6 +100,8 @@ bool StopNode();
 int SocketSendData(CNode* pnode);
 
 typedef int NodeId;
+
+bool IsXInvEnabled(CNode* pfrom); // BUIP018 XInv
 
 struct CombinerAll
 {
@@ -545,6 +548,14 @@ public:
             LOCK(cs_inventory);
             if (inv.type == MSG_TX && filterInventoryKnown.contains(inv.hash))
                 return;
+
+            // BUIP018 XInv: begin
+            if (IsXInvEnabled(this) && inv.type == MSG_XINV) {
+                vInventoryToSend.push_back(inv);
+                return;
+            }
+            // BUIP018 XInv: end
+
             vInventoryToSend.push_back(inv);
         }
     }
