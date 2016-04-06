@@ -759,7 +759,7 @@ int CNetMessage::readData(const char* pch, unsigned int nBytes)
 // requires LOCK(cs_vSend), BU: returns > 0 if any data was sent, 0 if nothing accomplished.
 int SocketSendData(CNode* pnode)
 {
-    int progress = 0; // BU This variable is incremented if something happens.  If it is zero at the bottom of the loop, we delay.  This solves spin loop issues where the select does not block but no bytes can be transferred (traffic shaping limited, for example).
+    int progress=0; // BU This variable is incremented if something happens.  If it is zero at the bottom of the loop, we delay.  This solves spin loop issues where the select does not block but no bytes can be transferred (traffic shaping limited, for example).
     std::deque<CSerializeData>::iterator it = pnode->vSendMsg.begin();
 
     while (it != pnode->vSendMsg.end()) {

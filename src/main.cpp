@@ -5101,7 +5101,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
            CCompressionStats::Update(vRecv.size() - ((nTxConcatenated-1)*76), nSizeTxCat);
 
            // We have to subtract the potential amount here or we will end up adding it twice when each tx was processed
-           //CCompressionStats::PotentialUpdate(0 - nSizeTxCat);  needs fixing...
+           CCompressionStats::PotentialUpdate(0 - nSizeTxCat);
         }
         else if (strCommand == NetMsgType::TXCAT) {
            // CCompressionStats::PotentialUpdate(vRecv.size()); we do not update this has since it gets updated again when the tx is processed
@@ -6273,12 +6273,16 @@ bool SendMessages(CNode* pto)
                     }
                 }
 
-                pto->filterInventoryKnown.insert(inv.hash);
+                //pto->filterInventoryKnown.insert(inv.hash);  BUIP017 Datastream Compression
 
                 vInv.push_back(inv);
                 if (vInv.size() >= 1000)
                 {
                     pto->PushMessage(NetMsgType::INV, vInv);
+                    // BUIP017 Datastream compression: begin
+                    BOOST_FOREACH(const CInv& inv, vInv)
+                        pto->filterInventoryKnown.insert(inv.hash);
+                    // BUIP017 Datastream compression: end
                     vInv.clear();
                 }
             }
@@ -6289,10 +6293,11 @@ bool SendMessages(CNode* pto)
         //    pto->PushMessage(NetMsgType::INV, vInv);
         bool fTestNet = GetBoolArg("-testnet", false);
         bool fRegTest = GetBoolArg("-regtest", false);
-        if (!vInv.empty() && vInv.size() > 5 && !fTestNet && !fRegTest) // by bundling inv's we get more concatenated tx's in return
+        if ((vInv.size() > 5) || (!vInv.empty() && (fTestNet || fRegTest))) { // by bundling inv's we get more concatenated tx's in return
             pto->PushMessage(NetMsgType::INV, vInv);
-        else if (!vInv.empty() && (fTestNet || fRegTest))
-            pto->PushMessage(NetMsgType::INV, vInv);
+            BOOST_FOREACH(const CInv& inv, vInv)
+                pto->filterInventoryKnown.insert(inv.hash);
+        }
         else if (!vInv.empty()) {
             BOOST_FOREACH(const CInv& inv, vInv)
                 pto->vInventoryToSend.push_back(inv);
