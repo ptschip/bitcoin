@@ -431,6 +431,19 @@ static UniValue GetThinBlockStats()
 }
 // BitcoinUnlimited BUIP010 : End
 
+// BitcoinUnlimited BUIP017 Datastream Compression: Start
+static UniValue GetCompressionStats()
+{
+    UniValue obj(UniValue::VOBJ);
+    bool enabled = nLocalServices & NODE_COMPRESS;
+    obj.push_back(Pair("enabled", enabled));
+    if (enabled) {
+        obj.push_back(Pair("summary", CCompressionStats::ToString()));
+    }
+    return obj;
+}
+// BitcoinUnlimited BUIP017 Datastream Compression : End
+
 UniValue getnetworkinfo(const UniValue& params, bool fHelp)
 {
     if (fHelp || params.size() != 0)
@@ -465,6 +478,7 @@ UniValue getnetworkinfo(const UniValue& params, bool fHelp)
             "  ]\n"
             "  \"warnings\": \"...\"                    (string) any network warnings (such as alert messages) \n"
             "  \"thinblockstats\": \"...\"              (string) thin block related statistics \n" 
+            "  \"compressionstats\": \"...\"            (string) compression related statistics \n" 
             "}\n"
             "\nExamples:\n"
             + HelpExampleCli("getnetworkinfo", "")
@@ -498,6 +512,7 @@ UniValue getnetworkinfo(const UniValue& params, bool fHelp)
 // BitcoinUnlimited BUIP010: Start
     obj.push_back(Pair("thinblockstats", GetThinBlockStats()));
 // BitcoinUnlimited BUIP010: End
+    obj.push_back(Pair("compressionstats", GetCompressionStats())); // BUIP017 Datastream Compression
     obj.push_back(Pair("warnings",       GetWarnings("statusbar")));
     return obj;
 }

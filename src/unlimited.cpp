@@ -82,6 +82,7 @@ std::string UnlimitedCmdLineHelp()
     strUsage += HelpMessageOpt("-connect-thinblock=<ip:port>", _("Connect to a thinblock node(s). Blocks will only be downloaded from a thinblock peer.  If no connections are possible then regular blocks will then be downloaded form any other connected peers."));
     strUsage += HelpMessageOpt("-minlimitertxfee=<amt>", strprintf(_("Fees (in satoshi/byte) smaller than this are considered zero fee and subject to -limitfreerelay (default: %s)"), DEFAULT_MINLIMITERTXFEE));
     strUsage += HelpMessageOpt("-maxlimitertxfee=<amt>", strprintf(_("Fees (in satoshi/byte) larger than this are always relayed (default: %s)"), DEFAULT_MAXLIMITERTXFEE));
+    strUsage += HelpMessageOpt("-compressionlevel=<n>", strprintf(_("Set compression level (0 to 2) 0 = no compression, 2 = max compression (default: %d)"), DEFAULT_COMPRESSION_LEVEL));
     return strUsage;
 }
 
@@ -508,7 +509,6 @@ UniValue settrafficshaping(const UniValue& params, bool fHelp)
     return NullUniValue;
 }
 
-
 /**
  *  BUIP010 Xtreme Thinblocks Section 
  */
@@ -716,6 +716,9 @@ void HandleBlockMessage(CNode *pfrom, const string &strCommand, CBlock &block, c
 
     // Clear the thinblock timer used for preferential download
     ClearThinBlockTimer(inv.hash);
+
+    // Print out compression stats every time a block is found
+    LogPrint("compress", "compression stats: %s\n", CCompressionStats::ToString());
 }
 
 bool ThinBlockMessageHandler(vector<CNode*>& vNodesCopy)
@@ -784,6 +787,7 @@ void SendXThinBlock(CBlock &block, CNode* pfrom, const CInv &inv)
     {
         CXThinBlock xThinBlock(block, pfrom->pThinBlockFilter);
         int nSizeBlock = ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION);
+
         if (xThinBlock.collision == true) // If there is a cheapHash collision in this block then send a normal thinblock
         {
             CThinBlock thinBlock(block, *pfrom->pThinBlockFilter);
@@ -794,7 +798,7 @@ void SendXThinBlock(CBlock &block, CNode* pfrom, const CInv &inv)
                 LogPrint("thin", "TX HASH COLLISION: Sent thinblock - size: %d vs block size: %d => tx hashes: %d transactions: %d  peerid=%d\n", nSizeThinBlock, nSizeBlock, xThinBlock.vTxHashes.size(), xThinBlock.vMissingTx.size(), pfrom->id);
             }
             else {
-                pfrom->PushMessage(NetMsgType::BLOCK, block);
+                SendBlock(block, pfrom); //BUIP017 Datastream compression
                 LogPrint("thin", "Sent regular block instead - xthinblock size: %d vs block size: %d => tx hashes: %d transactions: %d  peerid=%d\n", nSizeThinBlock, nSizeBlock, xThinBlock.vTxHashes.size(), xThinBlock.vMissingTx.size(), pfrom->id);
             }
         }
@@ -803,12 +807,32 @@ void SendXThinBlock(CBlock &block, CNode* pfrom, const CInv &inv)
             // Only send a thinblock if smaller than a regular block
             int nSizeThinBlock = ::GetSerializeSize(xThinBlock, SER_NETWORK, PROTOCOL_VERSION);
             if (nSizeThinBlock < nSizeBlock) {
-                CThinBlockStats::UpdateOutBound(nSizeThinBlock, nSizeBlock);
-                pfrom->PushMessage(NetMsgType::XTHINBLOCK, xThinBlock);
+                if (IsCompressionEnabled(pfrom)) {
+                    CDataStream cxThinBlock(SER_NETWORK, PROTOCOL_VERSION);
+                    CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
+                    ss << xThinBlock;
+                    if (ss.compress(cxThinBlock,
+                        GetArg("-compressionlevel", DEFAULT_COMPRESSION_LEVEL))) {
+                        if (cxThinBlock.size() < nSizeThinBlock) {
+                            pfrom->PushMessage(NetMsgType::CXTHINBLOCK, cxThinBlock);
+                            nSizeThinBlock = cxThinBlock.size();
+                        }
+                        else
+                            pfrom->PushMessage(NetMsgType::XTHINBLOCK, ss);
+                    }
+                    else {
+                        pfrom->PushMessage(NetMsgType::XTHINBLOCK, ss);
+                        LogPrintf("ERROR: CXTHINBLOCK compression failed\n");
+                    }
+                }
+                else
+                    pfrom->PushMessage(NetMsgType::XTHINBLOCK, xThinBlock);
                 LogPrint("thin", "Sent xthinblock - size: %d vs block size: %d => tx hashes: %d transactions: %d  peerid=%d\n", nSizeThinBlock, nSizeBlock, xThinBlock.vTxHashes.size(), xThinBlock.vMissingTx.size(), pfrom->id);
+                CThinBlockStats::UpdateOutBound(nSizeThinBlock, nSizeBlock);
+                LogPrint("thin", "thin block stats: %s\n", CThinBlockStats::ToString());
             }
             else {
-                pfrom->PushMessage(NetMsgType::BLOCK, block);
+                SendBlock(block, pfrom); //BUIP017 Datastream compression
                 LogPrint("thin", "Sent regular block instead - xthinblock size: %d vs block size: %d => tx hashes: %d transactions: %d  peerid=%d\n", nSizeThinBlock, nSizeBlock, xThinBlock.vTxHashes.size(), xThinBlock.vMissingTx.size(), pfrom->id);
             }
         }
@@ -824,7 +848,7 @@ void SendXThinBlock(CBlock &block, CNode* pfrom, const CInv &inv)
             LogPrint("thin", "Sent thinblock - size: %d vs block size: %d => tx hashes: %d transactions: %d  peerid=%d\n", nSizeThinBlock, nSizeBlock, thinBlock.vTxHashes.size(), thinBlock.vMissingTx.size(), pfrom->id);
         }
         else {
-            pfrom->PushMessage(NetMsgType::BLOCK, block);
+            SendBlock(block, pfrom); //BUIP017 Datastream compression
             LogPrint("thin", "Sent regular block instead - thinblock size: %d vs block size: %d => tx hashes: %d transactions: %d  peerid=%d\n", nSizeThinBlock, nSizeBlock, thinBlock.vTxHashes.size(), thinBlock.vMissingTx.size(), pfrom->id);
         }
     }
@@ -972,3 +996,119 @@ UniValue getstat(const UniValue& params, bool fHelp)
 
     return ret;
 }
+
+/**
+ *  BUIP017 Datastream Compression Section 
+ */
+bool IsCompressionEnabled(CNode* pfrom)
+{
+   if ((pfrom->nServices & NODE_COMPRESS) && (nLocalServices & NODE_COMPRESS))
+       return true;
+   return false;
+}
+
+void SendBlock(CBlock &block, CNode* pfrom)
+{
+    if (IsCompressionEnabled(pfrom)) {
+        CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
+        CDataStream cblock(SER_NETWORK, PROTOCOL_VERSION);
+        ss << block;
+        if (ss.compress(cblock,
+            GetArg("-compressionlevel", DEFAULT_COMPRESSION_LEVEL))) {
+            uint64_t nBlockSize = ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION);
+            if (cblock.size() < nBlockSize) {
+                pfrom->PushMessage(NetMsgType::CBLOCK, cblock);
+                CCompressionStats::Update(cblock.size(), nBlockSize);
+            }
+            else
+                pfrom->PushMessage(NetMsgType::BLOCK, block);
+        }
+        else {
+            pfrom->PushMessage(NetMsgType::BLOCK, block);
+            LogPrintf("ERROR: Block Compression failed\n");
+        }
+    }
+    else
+        pfrom->PushMessage(NetMsgType::BLOCK, block);
+}
+
+void SendTxCat(CNode* pfrom, CDataStream &txcat, uint64_t nTxConcatenated)
+{
+    LogPrint("compress", "TxCat has %d transactions\n", nTxConcatenated);
+    if (nTxConcatenated > 0) {
+        //Do not compress if below the minimum size
+        if (txcat.size() < MIN_TX_COMPRESS_SIZE)
+            pfrom->PushMessage(NetMsgType::TXCAT, txcat);
+        else {
+            // Compress concatenated tx's
+            CDataStream ctxcat(SER_NETWORK, PROTOCOL_VERSION);
+            if (txcat.compress(ctxcat,
+                GetArg("-compressionlevel", DEFAULT_COMPRESSION_LEVEL))) {
+                if(ctxcat.size() < txcat.size()) {
+                    pfrom->PushMessage(NetMsgType::CTXCAT, ctxcat);
+                    CCompressionStats::Update(ctxcat.size() - ((nTxConcatenated-1)*76), txcat.size());
+                }
+                else
+                    //Send uncompressed if smaller than compressed
+                    pfrom->PushMessage(NetMsgType::TXCAT, txcat);
+            }
+            else {
+                pfrom->PushMessage(NetMsgType::TXCAT, txcat);
+                LogPrintf("ERROR: TXCAT Compression failed\n");
+            }
+        }
+    }
+}
+
+void SendGetXthin(CNode* pfrom, const uint256 &hash, std::vector<uint256> &vOrphanHashes)
+{
+    CDataStream ss(SER_NETWORK, PROTOCOL_VERSION);
+    CBloomFilter filterMemPool;
+
+    BuildSeededBloomFilter(filterMemPool, vOrphanHashes);
+    ss << CInv(MSG_XTHINBLOCK, hash);
+    ss << filterMemPool;
+ 
+    if (IsCompressionEnabled(pfrom)) {
+        CDataStream ssGetXthin(SER_NETWORK, PROTOCOL_VERSION);
+        if (ss.compress(ssGetXthin,
+            GetArg("-compressionlevel", DEFAULT_COMPRESSION_LEVEL))) {
+            pfrom->PushMessage(NetMsgType::GET_CXTHIN, ssGetXthin);
+            CCompressionStats::Update(ssGetXthin.size(), ss.size());
+            LogPrint("compress", "Bloom filter and Inv compressed from %d to %d\n", ss.size(), ssGetXthin.size());
+        }
+        else {
+            pfrom->PushMessage(NetMsgType::GET_XTHIN, ss);
+            LogPrintf("ERROR: GET_CXTHIN Compression failed\n");
+        }
+    }
+    else
+        pfrom->PushMessage(NetMsgType::GET_XTHIN, ss);
+}
+
+// Start statistics at zero
+CStatHistory<uint64_t> CCompressionStats::nOriginalSize("messageSize", STAT_OP_SUM | STAT_KEEP);
+CStatHistory<uint64_t> CCompressionStats::nCompressedSize("compressedSize", STAT_OP_SUM | STAT_KEEP);
+CStatHistory<uint64_t> CCompressionStats::nMessages("numMessages", STAT_OP_SUM | STAT_KEEP);
+void CCompressionStats::Update(uint64_t nCompressedMessageSize, uint64_t nOriginalMessageSize)
+{
+	CCompressionStats::nOriginalSize += nOriginalMessageSize;
+	CCompressionStats::nCompressedSize += nCompressedMessageSize;
+	CCompressionStats::nMessages += 1;
+}
+std::string CCompressionStats::ToString()
+{
+	static const char *units[] = { "B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB"};
+	int i = 0;
+	double size = double(CCompressionStats::nOriginalSize() - CCompressionStats::nCompressedSize());
+	while (size > 1000) {
+		size /= 1000;
+		i++;
+	}
+
+	std::ostringstream ss;
+	ss << std::fixed << std::setprecision(2);
+	ss << "Compression has saved " << size << units[i] << " of bandwidth";
+	return ss.str();
+}
+

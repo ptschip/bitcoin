@@ -8,6 +8,8 @@
 #include "config/bitcoin-config.h"
 #endif
 
+#include <lzo/lzoconf.h> // BUIP017 Datastream Compression
+
 #include "init.h"
 
 #include "addrman.h"
@@ -933,6 +935,24 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
     int64_t nMempoolSizeMin = GetArg("-limitdescendantsize", DEFAULT_DESCENDANT_SIZE_LIMIT) * 1000 * 40;
     if (nMempoolSizeMax < 0 || nMempoolSizeMax < nMempoolSizeMin)
         return InitError(strprintf(_("-maxmempool must be at least %d MB"), std::ceil(nMempoolSizeMin / 1000000.0)));
+
+    // BUIP017 Datastream Compression - begin section
+    // -compressionlevel limits
+    int nLevel = GetArg("-compressionlevel", DEFAULT_COMPRESSION_LEVEL);
+    if (nLevel < 0 || nLevel > 2)
+        return InitError(strprintf(_("Error: -compressionlevel must be between 0 and 2: current = %d"), nLevel));
+    else if (nLevel > 0) { 
+        // Advertise compression as a service
+        nLocalServices |= NODE_COMPRESS;
+
+        //initialize the LZO compression library
+        if (lzo_init() != LZO_E_OK) {
+            LogPrintf("Internal error - lzo_init() failed !!!\n");
+            LogPrintf("This usually indicates a compiler bug - try recompiling\nwithout optimizations, and enable '-DLZO_DEBUG' for diagnostics\n");
+            return InitError(_("internal error - lzo_init() failed !!!"));
+        }
+    }
+    // BUIP017 Datastream Compression - end section
 
     // -par=0 means autodetect, but nScriptCheckThreads==0 means no concurrency
     nScriptCheckThreads = GetArg("-par", DEFAULT_SCRIPTCHECK_THREADS);

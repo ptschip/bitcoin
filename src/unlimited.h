@@ -47,6 +47,13 @@ static const unsigned int MAX_BLOCK_SIZE_MULTIPLIER = 3;
 static const unsigned int DEFAULT_MIN_LIMITFREERELAY = 1;
 // BU - Xtreme Thinblocks Auto Mempool Limiter - end section
 
+// BUIP017 Datastream Compression - begin section
+/** 0 = no compression, 2 = maximum compression. */
+static const unsigned int DEFAULT_COMPRESSION_LEVEL = 2;
+/** The size in Bytes below which we do not compress transactions */
+static const unsigned int MIN_TX_COMPRESS_SIZE = 500;
+// BUIP017 Datastream Compression - end section
+
 //! The largest block size that we have seen since startup
 extern uint64_t nLargestBlockSeen; // BU - Xtreme Thinblocks
 
@@ -114,6 +121,25 @@ extern void HandleBlockMessage(CNode *pfrom, const std::string &strCommand, CBlo
 extern void ConnectToThinBlockNodes();
 extern void CheckNodeSupportForThinBlocks();
 extern void SendXThinBlock(CBlock &block, CNode* pfrom, const CInv &inv);
+
+// BUIP017 Datastream Compression
+extern bool IsCompressionEnabled(CNode* pfrom);
+extern void SendBlock(CBlock &block, CNode* pfrom);
+extern void SendTxCat(CNode* pfrom, CDataStream &txcat, uint64_t nTxConcatented);
+extern void SendGetXthin(CNode* pfrom, const uint256 &hash, std::vector<uint256> &vOrphanHashes);
+
+// This class stores statistics for message compression.
+class CCompressionStats
+{
+    private:
+	static CStatHistory<uint64_t> nOriginalSize;
+	static CStatHistory<uint64_t> nCompressedSize;
+	static CStatHistory<uint64_t> nMessages;
+    public:
+	static void Update(uint64_t nCompressedMessageSize, uint64_t nOriginalMessageSize);
+	static std::string ToString();
+};
+
 
 // Handle receiving and sending messages from thin block capable nodes only (so that thin block nodes capable nodes are preferred)
 extern bool ThinBlockMessageHandler(std::vector<CNode*>& vNodesCopy);

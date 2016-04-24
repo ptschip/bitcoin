@@ -74,6 +74,7 @@ if EXEEXT == ".exe" and "-win" not in opts:
 
 #Tests
 testScripts = [
+    'compression.py',  #BUIP017 - Datastream Compression
     'wallet.py',
     'excessive.py',
     'listtransactions.py',
@@ -106,7 +107,7 @@ testScripts = [
     'prioritise_transaction.py',
     'invalidblockrequest.py',
     'invalidtxrequest.py',
-    'abandonconflict.py',
+    'abandonconflict.py',	
 ]
 testScriptsExt = [
     'bip65-cltv.py',
