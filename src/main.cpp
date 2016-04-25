@@ -355,7 +355,7 @@ bool MarkBlockAsReceived(const uint256& hash) {
         int64_t getdataTime = itInFlight->second.second->nTime;
         int64_t now = GetTimeMicros();
         double nResponseTime = (now - getdataTime) / 1000000.0;
-        LogPrint("thin", "Received block %s in %.2f seconds\n", hash.ToString(), nResponseTime);
+        LogPrint("thin", "Received block %s in %.2f seconds from peer=%d\n", hash.ToString(), nResponseTime, itInFlight->second.first);
         CThinBlockStats::UpdateResponseTime(nResponseTime);
         // BUIP010 Xtreme Thinblocks: end section
         CNodeState *state = State(itInFlight->second.first);
