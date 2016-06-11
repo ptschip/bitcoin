@@ -16,6 +16,7 @@
 #include "streams.h"
 #include "sync.h"
 #include "uint256.h"
+#include "unlimited.h"
 
 #include <deque>
 #include <stdint.h>
@@ -34,6 +35,14 @@
 class CAddrMan;
 class CScheduler;
 class CNode;
+
+// BU - Targeted Delta Filters: begin
+extern uint64_t nLargestBlockSeen;
+#include <boost/multi_index_container.hpp>
+#include <boost/multi_index/sequenced_index.hpp>
+#include <boost/multi_index/ordered_index.hpp>
+#include <boost/multi_index/identity.hpp>
+// BU: end
 
 namespace boost {
     class thread_group;
@@ -418,6 +427,19 @@ public:
     int64_t nNextAddrSend;
     int64_t nNextLocalAddrSend;
 
+    // BU: Targetd Delta Filters - begin
+    boost::multi_index_container<
+      uint64_t,
+      boost::multi_index::indexed_by<
+        boost::multi_index::sequenced<>,
+        boost::multi_index::ordered_non_unique<
+            boost::multi_index::identity<uint64_t> 
+        >
+      >
+    > setRecentInventoryKnown;
+    CCriticalSection cs_recentinventory;
+    // BU: end
+
     // inventory based relay
     CRollingBloomFilter filterInventoryKnown;
     std::vector<CInv> vInventoryToSend;
@@ -548,6 +570,33 @@ public:
             filterInventoryKnown.insert(inv.hash);
         }
     }
+
+    // BU: Targeted Delta Filters - begin
+    void AddRecentInventoryKnown(const CInv& inv)
+    {
+        // Here we maintain a multi indexed set of truncated hashes for recent transactions.
+        // We add the new hash and then delete the oldest hash if we are over the limit.
+        {
+            LOCK(cs_recentinventory);
+            uint64_t cheapHash = inv.hash.GetCheapHash();
+            if (!setRecentInventoryKnown.get<1>().count(cheapHash))
+                setRecentInventoryKnown.get<1>().insert(cheapHash);
+
+            // Prune the set.  12500 elements per 1MB of block space and will cover roughly the 
+            // last 2 hours of the most recent transations.
+            if (setRecentInventoryKnown.get<0>().size() >= nLargestBlockSeen * 12500 / 1000000)
+                setRecentInventoryKnown.get<0>().pop_back();
+        }
+    }
+    void DeleteRecentInventoryKnown(const uint256 hash)
+    {
+        // We delete from the set if we get txns that receive a reject notification.
+        {
+            LOCK(cs_recentinventory);
+            setRecentInventoryKnown.get<1>().erase(hash.GetCheapHash());
+        }
+    }
+    // BU - end
 
     void PushInventory(const CInv& inv)
     {

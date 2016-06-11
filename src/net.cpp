@@ -2499,7 +2499,14 @@ CNode::~CNode()
     // BUIP010 - Xtreme Thinblocks - begin section
     if (pThinBlockFilter)
         delete pThinBlockFilter;
+    mapThinBlocksInFlight.clear();
+    thinBlockWaitingForTxns = -1;
+    thinBlock.SetNull();
     // BUIP010 - Xtreme Thinblocks - end section
+
+    // Targeted Delta Filters - begin
+    setRecentInventoryKnown.clear();
+    // Targeted Delta Filters - end
 
     GetNodeSignals().FinalizeNode(GetId());
 }

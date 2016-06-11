@@ -9,6 +9,7 @@
 #include "uint256.h"
 #include "primitives/block.h"
 #include "bloom.h"
+#include "net.h"
 #include "stat.h"
 
 
@@ -20,7 +21,7 @@ public:
     std::vector<CTransaction> vMissingTx; // vector of transactions that did not match the bloom filter
 
 public:
-    CThinBlock(const CBlock& block, CBloomFilter& filter);
+    CThinBlock(const CBlock& block, CBloomFilter* filter, CNode* pfrom);
     CThinBlock() {}
 
     ADD_SERIALIZE_METHODS;
@@ -42,7 +43,7 @@ public:
     bool collision;
 
 public:
-    CXThinBlock(const CBlock& block, CBloomFilter* filter); // Use the filter to determine which txns the client has
+    CXThinBlock(const CBlock& block, CBloomFilter* filter, CNode* pfrom); // Use the filter to determine which txns the client has
     CXThinBlock(const CBlock& block);  // Assume client has all of the transactions (except coinbase)
     CXThinBlock() {}
 

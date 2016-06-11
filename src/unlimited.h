@@ -109,7 +109,7 @@ extern void ClearThinblockTimer(uint256 hash);
 extern bool IsThinBlocksEnabled();
 extern bool CanThinBlockBeDownloaded(CNode* pto);
 extern bool IsChainNearlySyncd();
-extern void BuildSeededBloomFilter(CBloomFilter& memPoolFilter, std::vector<uint256>& vOrphanHashes, uint256 hash);
+extern void BuildSeededBloomFilter(CBloomFilter& memPoolFilter, std::vector<uint256>& vOrphanHashes, uint256 hash, CNode* pto);
 extern void LoadFilter(CNode *pfrom, CBloomFilter *filter);
 extern void HandleBlockMessage(CNode *pfrom, const std::string &strCommand, CBlock &block, const CInv &inv);
 extern void ConnectToThinBlockNodes();

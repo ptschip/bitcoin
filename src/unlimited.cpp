@@ -639,7 +639,7 @@ bool IsChainNearlySyncd()
     return true;
 }
 
-void BuildSeededBloomFilter(CBloomFilter& filterMemPool, std::vector<uint256>& vOrphanHashes, uint256 hash)
+void BuildSeededBloomFilter(CBloomFilter& filterMemPool, std::vector<uint256>& vOrphanHashes, uint256 hash, CNode* pto)
 {
     int64_t nStartTimer= GetTimeMillis();
     seed_insecure_rand();
@@ -795,13 +795,54 @@ void BuildSeededBloomFilter(CBloomFilter& filterMemPool, std::vector<uint256>& v
     static double nMaxFalsePositive = 0.005; // maximum false positive rate at end of decay
     // TODO: automatically calculate the nGrowthCoefficient from nHoursToGrow, nMinFalsePositve and nMaxFalsePositive
 
-    // Count up all the transactions that we'll be putting into the filter, removing any duplicates
+    // remove any duplicate transactions that we'll be putting into the filter
     BOOST_FOREACH(uint256 txHash, setHighScoreMemPoolHashes)
         if (setPriorityMemPoolHashes.count(txHash))
             setPriorityMemPoolHashes.erase(txHash);
 
-    unsigned int nSelectedTxHashes = setHighScoreMemPoolHashes.size() + vOrphanHashes.size() + setPriorityMemPoolHashes.size();
-    unsigned int nElements = std::max(nSelectedTxHashes, (unsigned int)1); // Must make sure nElements is greater than zero or will assert
+    // Count up the number of elements that will go into the filter.  This depends on which protocol version
+    // we are using and whether we are using the Scalable version of Targeted Bloom filtering where we just
+    // send a delta filter
+    unsigned int nSelectedTxHashes = 0;
+    std::set<uint256> setDeltaBloomFilterHashes;
+    int nSkipped = 0;
+    LOCK(pto->cs_recentinventory);
+    LogPrint("thin", "size of setRecentInventoryKnown is %d\n", pto->setRecentInventoryKnown.get<1>().size());
+    if (pto->nVersion >= TARGETED_DELTAFILTER_VERSION)
+    {
+
+        //  The following checks confirm that the tx's in the bloom filter are ones that our two peers have
+        //  not communicated about yet through inv messages.
+        BOOST_FOREACH(uint256 txHash, setPriorityMemPoolHashes)
+        {
+            if (!pto->setRecentInventoryKnown.get<1>().count(txHash.GetCheapHash())) {
+                nSelectedTxHashes++;
+                setDeltaBloomFilterHashes.insert(txHash);
+            }
+            else
+                nSkipped++;
+        }
+        BOOST_FOREACH(uint256 txHash, setHighScoreMemPoolHashes)
+        {
+            if (!pto->setRecentInventoryKnown.get<1>().count(txHash.GetCheapHash())) {
+                nSelectedTxHashes++;
+                setDeltaBloomFilterHashes.insert(txHash);
+            }
+            else
+                nSkipped++;
+        }
+        BOOST_FOREACH(uint256 txHash, vOrphanHashes)
+        {
+            if (!pto->setRecentInventoryKnown.get<1>().count(txHash.GetCheapHash())) {
+                nSelectedTxHashes++;
+                setDeltaBloomFilterHashes.insert(txHash);
+            }
+            else
+                nSkipped++;
+        }
+    }
+    else
+        nSelectedTxHashes = setHighScoreMemPoolHashes.size() + vOrphanHashes.size() + setPriorityMemPoolHashes.size();
 
     // Calculate the new False Positive rate.  
     // We increase the false positive rate as time increases, starting at nMinFalsePositive and with growth governed by nGrowthCoefficient,
@@ -812,18 +853,29 @@ void BuildSeededBloomFilter(CBloomFilter& filterMemPool, std::vector<uint256>& v
     if (nTimePassed > nHoursToGrow * 3600)
         nFPRate = nMaxFalsePositive;
 
+    unsigned int nElements = std::max(nSelectedTxHashes, (unsigned int)1); // Must make sure nElements is greater than zero or will assert
     filterMemPool = CBloomFilter(nElements, nFPRate, insecure_rand(), BLOOM_UPDATE_ALL);
     LogPrint("thin", "FPrate: %f Num elements in bloom filter:%d high priority txs:%d high fee txs:%d orphans:%d total txs in mempool:%d\n", 
               nFPRate, nElements, setPriorityMemPoolHashes.size(), 
               setHighScoreMemPoolHashes.size(), vOrphanHashes.size(), mempool.mapTx.size());
 
     // Add the selected tx hashes to the bloom filter
-    BOOST_FOREACH(uint256 txHash, setPriorityMemPoolHashes)
-        filterMemPool.insert(txHash);
-    BOOST_FOREACH(uint256 txHash, setHighScoreMemPoolHashes)
-        filterMemPool.insert(txHash);
-    BOOST_FOREACH(uint256 txHash, vOrphanHashes)
-        filterMemPool.insert(txHash);
+    if (pto->nVersion >= TARGETED_DELTAFILTER_VERSION)
+    {
+        BOOST_FOREACH(uint256 txHash, setDeltaBloomFilterHashes)
+            filterMemPool.insert(txHash);
+        LogPrint("thin", "Created bloom filter using Targeted II method.  Skipped %d transactions\n", nSkipped);
+    }
+    else
+    {
+        BOOST_FOREACH(uint256 txHash, setPriorityMemPoolHashes)
+            filterMemPool.insert(txHash);
+        BOOST_FOREACH(uint256 txHash, setHighScoreMemPoolHashes)
+            filterMemPool.insert(txHash);
+        BOOST_FOREACH(uint256 txHash, vOrphanHashes)
+            filterMemPool.insert(txHash);
+    }
+
     uint64_t nSizeFilter = ::GetSerializeSize(filterMemPool, SER_NETWORK, PROTOCOL_VERSION);
     LogPrint("thin", "Created bloom filter: %d bytes for block: %s in:%d (ms)\n", nSizeFilter, hash.ToString(), GetTimeMillis() - nStartTimer);
     CThinBlockStats::UpdateOutBoundBloomFilter(nSizeFilter);
@@ -879,6 +931,15 @@ void HandleBlockMessage(CNode *pfrom, const string &strCommand, CBlock &block, c
         }
         else
             LogPrint("thin", "Processed Regular Block %s in %.2f seconds\n", inv.hash.ToString(), (double)(GetTimeMicros() - startTime) / 1000000.0);
+    }
+
+    // For Targeted Delta Filters
+    // Delete any hashes from the setRecentInventoryKnown that are in this block
+    {
+        LOCK(pfrom->cs_recentinventory);
+        unsigned int nTx = block.vtx.size();
+        for (unsigned int i = 0; i < nTx; i++)
+            pfrom->setRecentInventoryKnown.get<1>().erase(block.vtx[i].GetHash().GetCheapHash());
     }
 
     // When we request a thinblock we may get back a regular block if it is smaller than a thinblock
@@ -974,11 +1035,11 @@ void SendXThinBlock(CBlock &block, CNode* pfrom, const CInv &inv)
 {
     if (inv.type == MSG_XTHINBLOCK)
     {
-        CXThinBlock xThinBlock(block, pfrom->pThinBlockFilter);
+        CXThinBlock xThinBlock(block, pfrom->pThinBlockFilter, pfrom);
         int nSizeBlock = ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION);
         if (xThinBlock.collision == true) // If there is a cheapHash collision in this block then send a normal thinblock
         {
-            CThinBlock thinBlock(block, *pfrom->pThinBlockFilter);
+            CThinBlock thinBlock(block, pfrom->pThinBlockFilter, pfrom);
             int nSizeThinBlock = ::GetSerializeSize(xThinBlock, SER_NETWORK, PROTOCOL_VERSION);
             if (nSizeThinBlock < nSizeBlock) {
                 pfrom->PushMessage(NetMsgType::THINBLOCK, thinBlock);
@@ -1007,7 +1068,7 @@ void SendXThinBlock(CBlock &block, CNode* pfrom, const CInv &inv)
     }
     else if (inv.type == MSG_THINBLOCK)
     {
-        CThinBlock thinBlock(block, *pfrom->pThinBlockFilter);
+        CThinBlock thinBlock(block, pfrom->pThinBlockFilter, pfrom);
         int nSizeBlock = ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION);
         int nSizeThinBlock = ::GetSerializeSize(thinBlock, SER_NETWORK, PROTOCOL_VERSION);
         if (nSizeThinBlock < nSizeBlock) { // Only send a thinblock if smaller than a regular block
@@ -1020,6 +1081,16 @@ void SendXThinBlock(CBlock &block, CNode* pfrom, const CInv &inv)
             LogPrint("thin", "Sent regular block instead - thinblock size: %d vs block size: %d => tx hashes: %d transactions: %d  peerid=%d\n", nSizeThinBlock, nSizeBlock, thinBlock.vTxHashes.size(), thinBlock.vMissingTx.size(), pfrom->id);
         }
     }
+
+    // For Targeted Delta Filters
+    // Delete any hashes from the setRecentInventoryKnown that are in this block
+    {
+        LOCK(pfrom->cs_recentinventory);
+        unsigned int nTx = block.vtx.size();
+        for (unsigned int i = 0; i < nTx; i++)
+            pfrom->setRecentInventoryKnown.get<1>().erase(block.vtx[i].GetHash().GetCheapHash());
+    }
+
 }
 
 // Similar to TestBlockValidity but is very conservative in parameters (used in mining)

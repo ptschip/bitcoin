@@ -2,9 +2,11 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#include "net.h"
 #include "thinblock.h"
 #include "utiltime.h"
 #include "unlimited.h"
+#include "util.h"
 #include <sstream>
 #include <iomanip>
 
@@ -22,9 +24,29 @@ std::map<int64_t, uint64_t> CThinBlockStats::mapBloomFiltersOutBound;
 std::map<int64_t, double> CThinBlockStats::mapThinBlockResponseTime;
 std::map<int64_t, double> CThinBlockStats::mapThinBlockValidationTime;
 
-CThinBlock::CThinBlock(const CBlock& block, CBloomFilter& filter)
+extern std::deque<std::pair<int64_t, CInv> > vRelayExpiration;
+
+CThinBlock::CThinBlock(const CBlock& block, CBloomFilter* filter, CNode* pfrom)
 {
     header = block.GetBlockHeader();
+
+    std::set<uint256> setLastFewSeconds;
+    if (pfrom->nVersion >= TARGETED_DELTAFILTER_VERSION)
+    {
+        // Create a set containing the last few seconds of relayed tx's.  We want to send if needed as they
+        // may not have shown up at the other end yet. This helps to prevent an occasional re-request but occasionaly will
+        // send a tx that the other end already has.  A trade-off to prevent re-requests.
+        LogPrint("thin", "size of relaymap is %d last entry was %d time is %d\n", vRelayExpiration.size(), vRelayExpiration[vRelayExpiration.size()-1].first, GetTime());
+        LOCK(cs_mapRelay);
+        for (std::deque<std::pair<int64_t, CInv> >::iterator it = vRelayExpiration.end()-1; it != vRelayExpiration.begin(); it--) {
+             if (it->first >= (GetTime() + 900 - 10)) {
+                 setLastFewSeconds.insert(it->second.hash);
+                 LogPrint("thin", "Skipping transaction time:%d relaytime:%d \n", GetTime(), it->first);
+             }
+             else
+                 break;
+        }
+    }
 
     unsigned int nTx = block.vtx.size();
     vTxHashes.reserve(nTx);
@@ -37,23 +59,49 @@ CThinBlock::CThinBlock(const CBlock& block, CBloomFilter& filter)
         // These are the ones we need to relay back to the requesting peer.
         // NOTE: We always add the first tx, the coinbase as it is the one
         //       most often missing.
-        if (!filter.contains(hash) || i == 0)
-            vMissingTx.push_back(block.vtx[i]);
+        if (pfrom->nVersion >= TARGETED_DELTAFILTER_VERSION) {
+            if ((filter && !filter->contains(hash) && !pfrom->setRecentInventoryKnown.get<1>().count(hash.GetCheapHash())) || 
+                setLastFewSeconds.count(hash) || i == 0)
+                vMissingTx.push_back(block.vtx[i]);
+        }
+        else {
+            if ((filter && !filter->contains(hash)) || i == 0)
+                vMissingTx.push_back(block.vtx[i]);
+        }
     }
 }
 
-CXThinBlock::CXThinBlock(const CBlock& block, CBloomFilter* filter)
+CXThinBlock::CXThinBlock(const CBlock& block, CBloomFilter* filter, CNode* pfrom)
 {
     header = block.GetBlockHeader();
     this->collision = false;
 
+    std::set<uint256> setLastFewSeconds;
+    if (pfrom->nVersion >= TARGETED_DELTAFILTER_VERSION)
+    {
+        // Create a set containing the last few seconds of relayed tx's.  We want to send if needed as they
+        // may not have shown up at the other end yet. This helps to prevent an occasional re-request but occasionaly will
+        // send a tx that the other end already has.  A trade-off to prevent re-requests.
+        LogPrint("thin", "size of relaymap is %d last entry was %d time is %d\n", vRelayExpiration.size(), vRelayExpiration[vRelayExpiration.size()-1].first, GetTime());
+        LOCK(cs_mapRelay);
+        for (std::deque<std::pair<int64_t, CInv> >::iterator it = vRelayExpiration.end()-1; it != vRelayExpiration.begin(); it--) {
+             if (it->first >= (GetTime() + 900 - 10)) {
+                 setLastFewSeconds.insert(it->second.hash);
+                 LogPrint("thin", "Skipping transaction time:%d relaytime:%d \n", GetTime(), it->first);
+             }
+             else
+                 break;
+        }
+    }
+
     unsigned int nTx = block.vtx.size();
     vTxHashes.reserve(nTx);
     std::set<uint64_t> setPartialTxHash;
+    //LOCK(pfrom->cs_recentinventory);
     for (unsigned int i = 0; i < nTx; i++)
     {
-        const uint256 hash256 = block.vtx[i].GetHash();
-        uint64_t cheapHash = hash256.GetCheapHash();
+        const uint256 hash = block.vtx[i].GetHash();
+        uint64_t cheapHash = hash.GetCheapHash();
         vTxHashes.push_back(cheapHash);
 
         if (setPartialTxHash.count(cheapHash))
@@ -64,8 +112,15 @@ CXThinBlock::CXThinBlock(const CBlock& block, CBloomFilter* filter)
         // These are the ones we need to relay back to the requesting peer.
         // NOTE: We always add the first tx, the coinbase as it is the one
         //       most often missing.
-        if ((filter && !filter->contains(hash256)) || i == 0)
-            vMissingTx.push_back(block.vtx[i]);
+        if (pfrom->nVersion >= TARGETED_DELTAFILTER_VERSION) {
+            if ((filter && !filter->contains(hash) && !pfrom->setRecentInventoryKnown.get<1>().count(hash.GetCheapHash())) || 
+                setLastFewSeconds.count(hash) || i == 0)
+                vMissingTx.push_back(block.vtx[i]);
+        }
+        else {
+            if ((filter && !filter->contains(hash)) || i == 0)
+                vMissingTx.push_back(block.vtx[i]);
+        }
     }
 }
 
