@@ -5004,6 +5004,9 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
                         vEraseQueue.push_back(orphanHash);
                         assert(recentRejects);
                         recentRejects->insert(orphanHash);
+
+                        // BU: Targeted Delta Filters
+                        pfrom->DeleteRecentInventoryKnown(orphanHash);
                     }
                     mempool.check(pcoinsTip);
                 }
@@ -5024,6 +5027,9 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         } else {
             assert(recentRejects);
             recentRejects->insert(tx.GetHash());
+
+            // BU: Targeted Delta Filters
+            pfrom->DeleteRecentInventoryKnown(tx.GetHash());
 
             if (pfrom->fWhitelisted && GetBoolArg("-whitelistforcerelay", DEFAULT_WHITELISTFORCERELAY)) {
                 // Always relay transactions received from whitelisted peers, even
@@ -5800,6 +5806,9 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
                     uint256 hash;
                     vRecv >> hash;
                     ss << ": hash " << hash.ToString();
+
+                    // BU: Targeted Delta Filters
+                    pfrom->DeleteRecentInventoryKnown(hash);
                 }
                 LogPrint("net", "Reject %s\n", SanitizeString(ss.str()));
             } catch (const std::ios_base::failure&) {
@@ -6323,7 +6332,6 @@ bool SendMessages(CNode* pto)
         // Message: getdata (non-blocks)
         //
         while (!pto->fDisconnect && !pto->mapAskFor.empty() && (*pto->mapAskFor.begin()).first <= nNow)
-//        while (!pto->fDisconnect && !pto->mapAskFor.empty() )
         {
             const CInv& inv = (*pto->mapAskFor.begin()).second;
             if (!AlreadyHave(inv))

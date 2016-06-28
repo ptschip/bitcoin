@@ -2537,12 +2537,16 @@ void CNode::AskFor(const CInv& inv)
     nLastTime = nNow;
 
     // Each retry is 2 minutes after the last
-    nRequestTime = std::max(nRequestTime + 2 * 60 * 1000000, nNow);
+// BU: This is a major reason mempools can get out of sync. 2 minutes is a very long time to wait before re-requesting  tx
+// and when 2 mins has passed very often the block has already arrived and the tx is still requested to no avail.
+//   nRequestTime = std::max(nRequestTime + 2 * 60 * 1000000, nNow);
+    nRequestTime = std::max(nRequestTime + 5 * 1000000, nNow); // 5 seconds is plenty of time to wait before re-requesting from a different peer.  Txns are typically received subsecond.
     if (it != mapAlreadyAskedFor.end())
         mapAlreadyAskedFor.update(it, nRequestTime);
     else
         mapAlreadyAskedFor.insert(std::make_pair(inv, nRequestTime));
     mapAskFor.insert(std::make_pair(nRequestTime, inv));
+//LogPrintf("mapAskFor size: %d mapAlreadyAskedFor size: %d  setAskfor size %d\n", mapAskFor.size(), mapAlreadyAskedFor.size(), setAskFor.size());
 }
 
 void CNode::BeginMessage(const char* pszCommand) EXCLUSIVE_LOCK_FUNCTION(cs_vSend)
