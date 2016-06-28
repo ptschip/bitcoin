@@ -4241,7 +4241,7 @@ bool static AlreadyHave(const CInv& inv) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
                 hashRecentRejectsChainTip = chainActive.Tip()->GetBlockHash();
                 recentRejects->reset();
             }
-
+            
             return recentRejects->contains(inv.hash) ||
                    mempool.exists(inv.hash) ||
                    mapOrphanTransactions.count(inv.hash) ||
@@ -4707,12 +4707,21 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             boost::this_thread::interruption_point();
             pfrom->AddInventoryKnown(inv);
 
-            // BU: Targeted Delta Filters
-            if (inv.type == MSG_TX)
-                pfrom->AddRecentInventoryKnown(inv);
-
             bool fAlreadyHave = AlreadyHave(inv);
             LogPrint("net", "got inv: %s  %s peer=%d\n", inv.ToString(), fAlreadyHave ? "have" : "new", pfrom->id);
+
+            // BU: Targeted Delta Filters
+            // If there is a recent reject from peer A and then we receive an INV from peer B
+            // we must send a reject notification to peer B so that it can maintain a proper accounting
+            // for setRecentInventoryKnown.
+            // BU: Targeted Delta Filters
+            if (inv.type == MSG_TX) {
+                if (fAlreadyHave && recentRejects->contains(inv.hash)) {
+                    pfrom->PushMessage(NetMsgType::REJECT, (std::string)NetMsgType::TX, REJECT_DUPLICATE, string("Duplicate attempt to send a recently rejected tx"));
+                    continue;
+                }
+                pfrom->AddRecentInventoryKnown(inv); // if not a reject then we add to the set
+            }
 
             if (inv.type == MSG_BLOCK) {
                 UpdateBlockAvailability(pfrom->GetId(), inv.hash);
