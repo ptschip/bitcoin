@@ -936,10 +936,19 @@ void HandleBlockMessage(CNode *pfrom, const string &strCommand, CBlock &block, c
     // For Targeted Delta Filters
     // Delete any hashes from the setRecentInventoryKnown that are in this block
     {
-        LOCK(pfrom->cs_recentinventory);
+        LOCK(cs_main);
+        //LOCK2(pfrom->cs_inventory, pfrom->cs_recentinventory);
         unsigned int nTx = block.vtx.size();
-        for (unsigned int i = 0; i < nTx; i++)
+        for (unsigned int i = 0; i < nTx; i++) {
             pfrom->setRecentInventoryKnown.get<1>().erase(block.vtx[i].GetHash().GetCheapHash());
+
+            // Also erase any tx's that we may be waiting to ask for
+            pfrom->setAskFor.erase(block.vtx[i].GetHash());
+            pfrom->mapAskFor.erase(block.vtx[i].GetHash().GetCheapHash());
+
+            CInv inv(MSG_TX, block.vtx[i].GetHash());
+            mapAlreadyAskedFor.erase(inv);
+        }
     }
 
     // When we request a thinblock we may get back a regular block if it is smaller than a thinblock
