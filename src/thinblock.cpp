@@ -50,6 +50,7 @@ CThinBlock::CThinBlock(const CBlock& block, CBloomFilter* filter, CNode* pfrom)
 
     unsigned int nTx = block.vtx.size();
     vTxHashes.reserve(nTx);
+    LOCK(pfrom->cs_recentinventory);
     for (unsigned int i = 0; i < nTx; i++)
     {
         const uint256& hash = block.vtx[i].GetHash();
@@ -63,6 +64,12 @@ CThinBlock::CThinBlock(const CBlock& block, CBloomFilter* filter, CNode* pfrom)
             if ((filter && !filter->contains(hash) && !pfrom->setRecentInventoryKnown.get<1>().count(hash.GetCheapHash())) || 
                 setLastFewSeconds.count(hash) || i == 0)
                 vMissingTx.push_back(block.vtx[i]);
+
+            // Erase the hash from the set to keep our nodes in sync with the node we're sending to.
+            // Once the remote node receives the block they too will erase the same entries from their
+            // copy of setRecentInventoryKnown.
+            pfrom->setRecentInventoryKnown.get<1>().erase(hash.GetCheapHash());
+
         }
         else {
             if ((filter && !filter->contains(hash)) || i == 0)
@@ -97,7 +104,7 @@ CXThinBlock::CXThinBlock(const CBlock& block, CBloomFilter* filter, CNode* pfrom
     unsigned int nTx = block.vtx.size();
     vTxHashes.reserve(nTx);
     std::set<uint64_t> setPartialTxHash;
-    //LOCK(pfrom->cs_recentinventory);
+    LOCK(pfrom->cs_recentinventory);
     for (unsigned int i = 0; i < nTx; i++)
     {
         const uint256 hash = block.vtx[i].GetHash();
@@ -113,9 +120,15 @@ CXThinBlock::CXThinBlock(const CBlock& block, CBloomFilter* filter, CNode* pfrom
         // NOTE: We always add the first tx, the coinbase as it is the one
         //       most often missing.
         if (pfrom->nVersion >= TARGETED_DELTAFILTER_VERSION) {
-            if ((filter && !filter->contains(hash) && !pfrom->setRecentInventoryKnown.get<1>().count(hash.GetCheapHash())) || 
+            if ((filter && !filter->contains(hash) && !pfrom->setRecentInventoryKnown.get<1>().count(cheapHash)) || 
                 setLastFewSeconds.count(hash) || i == 0)
                 vMissingTx.push_back(block.vtx[i]);
+
+            // Erase the hash from the set to keep our nodes in sync with the node we're sending to.
+            // Once the remote node receives the block they too will erase the same entries from their
+            // copy of setRecentInventoryKnown.
+            pfrom->setRecentInventoryKnown.get<1>().erase(cheapHash);
+
         }
         else {
             if ((filter && !filter->contains(hash)) || i == 0)

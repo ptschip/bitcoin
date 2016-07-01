@@ -936,8 +936,8 @@ void HandleBlockMessage(CNode *pfrom, const string &strCommand, CBlock &block, c
     // For Targeted Delta Filters
     // Delete any hashes from the setRecentInventoryKnown that are in this block
     {
-        LOCK(cs_main);
-        //LOCK2(pfrom->cs_inventory, pfrom->cs_recentinventory);
+        //LOCK(cs_main);
+        LOCK2(pfrom->cs_inventory, pfrom->cs_recentinventory);
         unsigned int nTx = block.vtx.size();
         for (unsigned int i = 0; i < nTx; i++) {
             pfrom->setRecentInventoryKnown.get<1>().erase(block.vtx[i].GetHash().GetCheapHash());
