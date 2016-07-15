@@ -65,6 +65,12 @@ class CRequestManager
   CRequestManager();
 
   // Get this object from somewhere, asynchronously.
+  void AskFor(const CXInv& obj, CNode* from, int priority=0);
+
+  // Get these objects from somewhere, asynchronously.
+  void AskFor(const std::vector<CXInv>& objArray, CNode* from,int priority=0);
+
+  // Get this object from somewhere, asynchronously.
   void AskFor(const CInv& obj, CNode* from, int priority=0);
 
   // Get these objects from somewhere, asynchronously.

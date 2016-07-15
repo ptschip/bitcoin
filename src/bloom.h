@@ -123,8 +123,10 @@ public:
 
     void insert(const std::vector<unsigned char>& vKey);
     void insert(const uint256& hash);
+    void insert(const uint64_t& hash);
     bool contains(const std::vector<unsigned char>& vKey) const;
     bool contains(const uint256& hash) const;
+    bool contains(const uint64_t& hash) const;
 
     void reset();
 

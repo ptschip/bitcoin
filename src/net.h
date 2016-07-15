@@ -424,6 +424,7 @@ public:
     // inventory based relay
     CRollingBloomFilter filterInventoryKnown;
     std::vector<CInv> vInventoryToSend;
+    std::vector<CXInv> vXInventoryToSend;
     CCriticalSection cs_inventory;
     std::set<uint256> setAskFor;
     std::multimap<int64_t, CInv> mapAskFor;
@@ -533,6 +534,13 @@ public:
         return false;
     }
 
+    // BUIP021:
+    bool XInvCapable()
+    {
+        if (nServices & NODE_XINV) return true;
+        return false;
+    }
+
     void AddAddressKnown(const CAddress& addr)
     {
         addrKnown.insert(addr.GetKey());
@@ -561,6 +569,15 @@ public:
         }
     }
 
+    // BUIP021 XInv
+    void AddInventoryKnown(const CXInv& inv)
+    {
+        {
+            LOCK(cs_inventory);
+            filterInventoryKnown.insert(inv.hash);
+        }
+    }
+
     void PushInventory(const CInv& inv)
     {
         {
@@ -568,6 +585,17 @@ public:
             if (inv.type == MSG_TX && filterInventoryKnown.contains(inv.hash))
                 return;
             vInventoryToSend.push_back(inv);
+        }
+    }
+
+    // BUIP021 XInv
+    void PushInventoryXINV(const CXInv& xinv)
+    {
+        {
+            LOCK(cs_inventory);
+            if (xinv.type == MSG_XTX && filterInventoryKnown.contains(xinv.hash))
+                return;
+            vXInventoryToSend.push_back(xinv);
         }
     }
 

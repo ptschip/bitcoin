@@ -81,6 +81,41 @@ void CRequestManager::cleanup(OdMap::iterator& itemIt)
 }
 
 // Get this object from somewhere, asynchronously.
+void CRequestManager::AskFor(const CXInv& obj, CNode* from, int priority)
+{
+  //LogPrint("req", "ReqMgr: Ask for %s.\n",obj.ToString().c_str());
+
+  LOCK(cs_objDownloader);
+  if (obj.type == MSG_XTX)
+    {
+      uint256 temp = obj.hash;
+      OdMap::value_type v(temp,CUnknownObj());
+      std::pair<OdMap::iterator,bool> result = mapTxnInfo.insert(v);
+      OdMap::iterator& item = result.first;
+      CUnknownObj& data = item->second;
+      data.obj = obj;
+      if (result.second)  // inserted
+	{
+	  pendingTxns += 1; 
+          // all other fields are zeroed on creation
+	}
+      //else - existing
+
+      data.priority = max(priority, data.priority);
+      // Got the data, now add the node as a source
+      data.AddSource(from);
+    }
+
+}
+
+// Get these objects from somewhere, asynchronously.
+void CRequestManager::AskFor(const std::vector<CXInv>& objArray, CNode* from, int priority)
+{
+  unsigned int sz = objArray.size();
+  for (unsigned int nInv = 0; nInv < sz; nInv++)
+      AskFor(objArray[nInv], from, priority);
+}
+
 void CRequestManager::AskFor(const CInv& obj, CNode* from, int priority)
 {
   //LogPrint("req", "ReqMgr: Ask for %s.\n",obj.ToString().c_str());
@@ -99,9 +134,7 @@ void CRequestManager::AskFor(const CInv& obj, CNode* from, int priority)
 	  pendingTxns+=1;
 	  // all other fields are zeroed on creation
 	}
-      else  // existing
-	{
-	}
+      //else - existing
 
       data.priority = max(priority,data.priority);
       // Got the data, now add the node as a source
@@ -402,7 +435,7 @@ void CRequestManager::SendRequests()
   cs_objDownloader.lock();
   if (sendBlkIter == mapBlkInfo.end()) sendBlkIter = mapBlkInfo.begin();
 
-  while ((sendBlkIter != mapBlkInfo.end())&&(blockPacer.try_leak(1)))
+  while ((sendBlkIter != mapBlkInfo.end()) && (blockPacer.try_leak(1)))
     {
       now = GetTimeMicros();
       OdMap::iterator itemIter = sendBlkIter;
@@ -439,8 +472,7 @@ void CRequestManager::SendRequests()
   
  
   if (sendIter == mapTxnInfo.end()) sendIter = mapTxnInfo.begin();
-  // while (((lastPass + MIN_REQUEST_RETRY_INTERVAL < now)||(inFlight < maxInFlight + droppedTxns()))&&(sendIter != mapTxnInfo.end()))
-  while ((sendIter != mapTxnInfo.end())&&(requestPacer.try_leak(1)))
+  while ((sendIter != mapTxnInfo.end()) && (requestPacer.try_leak(1)))
     {
       now = GetTimeMicros();
       OdMap::iterator itemIter = sendIter;
@@ -455,7 +487,7 @@ void CRequestManager::SendRequests()
 	    {
 	      if (item.lastRequestTime)  // if this is positive, we've requested at least once
 		{
-		  LogPrint("req", "Request timeout for %s.  Retrying\n",item.obj.ToString().c_str());
+		  LogPrint("req", "Request timeout for %s.  Retrying\n", item.obj.ToString().c_str());
 		  // Not reducing inFlight; its still outstanding; will be cleaned up when item is removed from map
                   droppedTxns += 1;
 		}

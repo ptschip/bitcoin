@@ -56,6 +56,8 @@ struct CMainSignals {
     boost::signals2::signal<void (const CBlockLocator &)> SetBestChain;
     /** Notifies listeners about an inventory item being seen on the network. */
     boost::signals2::signal<void (const uint256 &)> Inventory;
+    /** Notifies listeners about an inventory item being seen on the network. */
+    boost::signals2::signal<void (const uint64_t &)> XInventory;
     /** Tells listeners to broadcast their data. */
     boost::signals2::signal<void (int64_t nBestBlockTime)> Broadcast;
     /** Notifies listeners of a block validation result */

@@ -1058,6 +1058,11 @@ bool AppInit2(boost::thread_group& threadGroup, CScheduler& scheduler)
         nLocalServices |= NODE_XTHIN;
     // BUIP010 Xtreme Thinblocks: begin section
 
+    // BUIP021 XInv: begin section
+    if (GetBoolArg("-use-xinv", true))
+        nLocalServices |= NODE_XINV;
+    // BUIP021 XInv: begin section
+  		  
 #if 0 // BUIP004: mempool replacement is not allowed    
     fEnableReplacement = GetBoolArg("-mempoolreplacement", DEFAULT_ENABLE_REPLACEMENT);
     if ((!fEnableReplacement) && mapArgs.count("-mempoolreplacement")) {

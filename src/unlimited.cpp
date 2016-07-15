@@ -349,6 +349,8 @@ std::string UnlimitedCmdLineHelp()
     strUsage += HelpMessageOpt("-expeditedblock=<host>", _("Request expedited blocks from this host whenever we are connected to it"));
     strUsage += HelpMessageOpt("-maxexpeditedblockrecipients=<n>", _("The maximum number of nodes this node will forward expedited blocks to"));
     strUsage += HelpMessageOpt("-maxexpeditedtxrecipients=<n>", _("The maximum number of nodes this node will forward expedited transactions to"));
+    strUsage += HelpMessageOpt("-use-xinv=<n>", strprintf(_("Turn XInv on or off (off: 0, on: 1, default: %d)"), 1));
+
     return strUsage;
 }
 
@@ -1556,4 +1558,10 @@ UniValue getstat(const UniValue& params, bool fHelp)
       }
 
     return ret;
+}
+
+//BUIP021 XINV
+bool IsXInvEnabled()
+{
+     return GetBoolArg("-use-xinv", true);
 }

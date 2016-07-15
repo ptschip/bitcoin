@@ -269,6 +269,19 @@ extern const char *BUVERSION;
  * @since protocol version 80002.
  */
 extern const char *BUVERACK;
+
+/**
+ * BU specific inventory message used for XINV which contains truncated 64bit tx hashes
+ * @since protocol version 80003.
+ */
+extern const char *XINV;
+
+/**
+ * BU specific inventory message used for XINV which contains truncated 64bit tx hashes
+ * @since protocol version 80003.
+ */
+extern const char *XGETDATA;
+
 };
 
 /* Get a vector of all valid message types (see above) */
@@ -295,6 +308,13 @@ enum {
     // make xthin requests
     NODE_XTHIN = (1 << 4),
     // BUIP010 - Xtreme Thinblocks - end section
+
+    // BUIP018 - XInv - begin section
+    // NODE_XINV means the node supports Inventory message compression
+    // If this is turned off on either peer then the node will not service XInv requests nor  
+    // make XInv requests
+    NODE_XINV = (1 << 6),
+    // BUIP018 - XInv - end section
 
     // Bits 24-31 are reserved for temporary experiments. Just pick a bit that
     // isn't getting used, or one not being used much, and notify the
@@ -367,6 +387,33 @@ public:
     uint256 hash;
 };
 
+/** XInv message data */
+class CXInv
+{
+public:
+    CXInv();
+    CXInv(int typeIn, const uint64_t& hashIn);
+    CXInv(const std::string& strType, const uint64_t& hashIn);
+
+    ADD_SERIALIZE_METHODS;
+
+    template <typename Stream, typename Operation>
+    inline void SerializationOp(Stream& s, Operation ser_action, int nType, int nVersion)
+    {
+        READWRITE(type);
+        READWRITE(hash);
+    }
+
+    bool IsKnownType() const;
+    const char* GetCommand() const;
+    std::string ToString() const;
+
+    // TODO: make private (improves encapsulation)
+public:
+    int type;
+    uint64_t hash;
+};
+
 enum {
     MSG_TX = 1,
     MSG_BLOCK,
@@ -379,6 +426,8 @@ enum {
     // BUIP010 Xtreme Thinblocks: an Xtreme thin block contains the first 8 bytes of all the tx hashes 
     // and also provides the missing transactions that are needed at the other end to reconstruct the block
     MSG_XTHINBLOCK,
+    // BUIP021 Xinv.  This message contains the truncated 64bit tx hash used for inventory compression
+    MSG_XTX,
 };
 
 #endif // BITCOIN_PROTOCOL_H

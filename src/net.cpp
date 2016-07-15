@@ -2174,6 +2174,7 @@ void RelayTransaction(const CTransaction& tx)
 void RelayTransaction(const CTransaction& tx, const CDataStream& ss)
 {
     CInv inv(MSG_TX, tx.GetHash());
+    CXInv xinv(MSG_XTX, tx.GetHash().GetCheapHash()); // BUIP021 XInv
     {
         LOCK(cs_mapRelay);
         // Expire old relay messages
@@ -2194,7 +2195,10 @@ void RelayTransaction(const CTransaction& tx, const CDataStream& ss)
         if (pnode->pfilter) {
             if (pnode->pfilter->IsRelevantAndUpdate(tx))
                 pnode->PushInventory(inv);
-        } else
+        } 
+        else if (IsXInvEnabled() && pnode->XInvCapable())
+            pnode->PushInventoryXINV(xinv);
+        else
             pnode->PushInventory(inv);
     }
 }

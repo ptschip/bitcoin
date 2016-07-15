@@ -158,5 +158,8 @@ enum {
   EXPEDITED_MSG_XTHIN    = 2,
 };
 
+// BUIP021 XInv
+extern bool IsXInvEnabled();
+
 
 #endif

@@ -249,6 +249,13 @@ void CRollingBloomFilter::insert(const uint256& hash)
     insert(data);
 }
 
+//BUIP021 XInv
+void CRollingBloomFilter::insert(const uint64_t& hash)
+{
+    vector<unsigned char> data(hash);
+    insert(data);
+}
+
 bool CRollingBloomFilter::contains(const std::vector<unsigned char>& vKey) const
 {
     if (nInsertions < nBloomSize / 2) {
@@ -260,6 +267,13 @@ bool CRollingBloomFilter::contains(const std::vector<unsigned char>& vKey) const
 bool CRollingBloomFilter::contains(const uint256& hash) const
 {
     vector<unsigned char> data(hash.begin(), hash.end());
+    return contains(data);
+}
+
+// BUIP021 XInv
+bool CRollingBloomFilter::contains(const uint64_t& hash) const
+{
+    vector<unsigned char> data(hash);
     return contains(data);
 }
 

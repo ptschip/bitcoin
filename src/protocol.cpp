@@ -47,6 +47,8 @@ const char *XPEDITEDBLK="Xb";
 const char *XPEDITEDTxn="Xt";
 const char *BUVERSION="buversion";
 const char *BUVERACK="buverack";
+const char *XINV="xinv"; // BUIP021 XINV
+const char *XGETDATA="xgetdata"; // BUIP021 XINV
 };
 
 static const char* ppszTypeName[] =
@@ -58,8 +60,6 @@ static const char* ppszTypeName[] =
     // BUIP010 Xtreme Thinblocks - begin section
     NetMsgType::THINBLOCK,
     NetMsgType::XTHINBLOCK,
-    NetMsgType::XBLOCKTX,
-    NetMsgType::GET_XBLOCKTX,
     // BUIP010 Xtreme Thinblocks - end section
 };
 
@@ -101,6 +101,10 @@ const static std::string allNetMessageTypes[] = {
     NetMsgType::XPEDITEDTxn,
     NetMsgType::BUVERSION,
     NetMsgType::BUVERACK,
+    // BUIP021 XInv - begin
+    NetMsgType::XINV,
+    NetMsgType::XGETDATA,
+    // BUIP021 XInv - end
 };
 const static std::vector<std::string> allNetMessageTypesVec(allNetMessageTypes, allNetMessageTypes+ARRAYLEN(allNetMessageTypes));
 
@@ -223,6 +227,51 @@ const char* CInv::GetCommand() const
 std::string CInv::ToString() const
 {
     return strprintf("%s %s", GetCommand(), hash.ToString());
+}
+
+CXInv::CXInv()
+{
+    type = 0;
+    hash = NULL;
+}
+
+CXInv::CXInv(int typeIn, const uint64_t& hashIn)
+{
+    type = typeIn;
+    hash = hashIn;
+}
+
+CXInv::CXInv(const std::string& strType, const uint64_t& hashIn)
+{
+    unsigned int i;
+    for (i = 1; i < ARRAYLEN(ppszTypeName); i++)
+    {
+        if (strType == ppszTypeName[i])
+        {
+            type = i;
+            break;
+        }
+    }
+    if (i == ARRAYLEN(ppszTypeName))
+        throw std::out_of_range(strprintf("CXInv::CXInv(string, uint64_t): unknown type '%s'", strType));
+    hash = hashIn;
+}
+
+bool CXInv::IsKnownType() const
+{
+    return (type >= 1 && type < (int)ARRAYLEN(ppszTypeName));
+}
+
+const char* CXInv::GetCommand() const
+{
+    if (!IsKnownType())
+        throw std::out_of_range(strprintf("CInv::GetCommand(): type=%d unknown type", type));
+    return ppszTypeName[type];
+}
+
+std::string CXInv::ToString() const
+{
+    return strprintf("%s %d", GetCommand(), hash);
 }
 
 const std::vector<std::string> &getAllNetMessageTypes()
