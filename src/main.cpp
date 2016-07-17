@@ -4618,6 +4618,35 @@ static bool AlreadyHave(const CInv& inv) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
     return true;
 }
 
+// BUIP021 XInv - begin
+static bool AlreadyHave(const CXInv& inv) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
+{
+    switch (inv.type)
+    {
+    case MSG_XTX:
+        {
+            assert(recentRejects);
+            if (chainActive.Tip()->GetBlockHash() != hashRecentRejectsChainTip)
+            {
+                // If the chain tip has changed previously rejected transactions
+                // might be now valid, e.g. due to a nLockTime'd tx becoming valid,
+                // or a double-spend. Reset the rejects filter and give those
+                // txs a second chance.
+                hashRecentRejectsChainTip = chainActive.Tip()->GetBlockHash();
+                recentRejects->reset();
+            }
+
+            return recentRejects->contains(inv.hash) ||
+                   mempool.exists(inv.hash) ||
+                   mapOrphanTransactions.count(inv.hash) ||
+                   pcoinsTip->HaveCoins(inv.hash);
+        }
+    }
+    // Don't know what it is, just say we already got one
+    return true;
+}
+// BUIP021 XInv - end
+
 void static ProcessGetData(CNode* pfrom, const Consensus::Params& consensusParams)
 {
     std::deque<CInv>::iterator it = pfrom->vRecvGetData.begin();
@@ -5116,6 +5145,52 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
 
         if (!vToFetch.empty())
             pfrom->PushMessage(NetMsgType::GETDATA, vToFetch);
+    }
+
+    else if (strCommand == NetMsgType::XINV)
+    {
+        vector<CXInv> vInv;
+        vRecv >> vInv;
+        if (vInv.size() > MAX_INV_SZ)
+        {
+            Misbehaving(pfrom->GetId(), 20);
+            return error("message inv size() = %u", vInv.size());
+        }
+
+        bool fBlocksOnly = GetBoolArg("-blocksonly", DEFAULT_BLOCKSONLY);
+
+        // Allow whitelisted peers to send data other than blocks in blocks only mode if whitelistrelay is true
+        if (pfrom->fWhitelisted && GetBoolArg("-whitelistrelay", DEFAULT_WHITELISTRELAY))
+            fBlocksOnly = false;
+
+        LOCK(cs_main);
+
+        std::vector<CXInv> vToFetch;
+
+        for (unsigned int nInv = 0; nInv < vInv.size(); nInv++)
+        {
+            const CXInv &inv = vInv[nInv];
+
+            boost::this_thread::interruption_point();
+            pfrom->AddInventoryKnown(inv);
+
+            bool fAlreadyHave = AlreadyHave(inv);
+            LogPrint("net", "got inv: %s  %s peer=%d\n", inv.ToString(), fAlreadyHave ? "have" : "new", pfrom->id);
+
+            if (!fAlreadyHave && !fImporting && !fReindex)
+                  requester.AskFor(inv, pfrom); // BU manage outgoing requests.  was: pfrom->AskFor(inv);
+
+            // Track requests for our stuff
+            GetMainSignals().XInventory(inv.hash);
+
+            if (pfrom->nSendSize > (SendBufferSize() * 2)) {
+                Misbehaving(pfrom->GetId(), 50);
+                return error("send buffer size() = %u", pfrom->nSendSize);
+            }
+        }
+
+        if (!vToFetch.empty())
+            pfrom->PushMessage(NetMsgType::XGETDATA, vToFetch);
     }
 
 
@@ -6586,6 +6661,8 @@ bool SendMessages(CNode* pto)
         //
         // Message: inventory
         //
+if (!IsXInvEnabled() || !pto->XInvCapable())
+{
         vector<CInv> vInv;
         vector<CInv> vInvWait;
         {
@@ -6633,6 +6710,53 @@ bool SendMessages(CNode* pto)
         }
         if (!vInv.empty())
             pto->PushMessage(NetMsgType::INV, vInv);
+}
+else
+{
+
+        vector<CXInv> vInv;
+        vector<CXInv> vInvWait;
+        {
+            bool fSendTrickle = pto->fWhitelisted;
+            if (pto->nNextInvSend < nNow) {
+                fSendTrickle = true;
+                pto->nNextInvSend = PoissonNextSend(nNow, AVG_INVENTORY_BROADCAST_INTERVAL);
+            }
+            LOCK(pto->cs_inventory);
+            vInv.reserve(std::min<size_t>(1000, pto->vXInventoryToSend.size()));
+            vInvWait.reserve(pto->vXInventoryToSend.size());
+            BOOST_FOREACH(const CXInv& inv, pto->vXInventoryToSend)
+            {
+                if (inv.type == MSG_XTX && pto->filterInventoryKnown.contains(inv.hash))
+                    continue;
+
+                // trickle out tx inv to protect privacy
+                if (inv.type == MSG_XTX && !fSendTrickle)
+                {
+                    // 1/4 of tx invs blast to all immediately
+                    bool fTrickleWait = (insecure_rand() % 4 != 0);
+
+                    if (fTrickleWait)
+                    {
+                        vInvWait.push_back(inv);
+                        continue;
+                    }
+                }
+
+                pto->filterInventoryKnown.insert(inv.hash);
+
+                vInv.push_back(inv);
+                if (vInv.size() >= 1000)
+                {
+                    pto->PushMessage(NetMsgType::XINV, vInv);
+                    vInv.clear();
+                }
+            }
+            pto->vXInventoryToSend = vInvWait;
+        }
+        if (!vInv.empty())
+            pto->PushMessage(NetMsgType::XINV, vInv);
+}
 
         // Detect whether we're stalling
         nNow = GetTimeMicros();
