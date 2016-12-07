@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <vector>
 
+#include <boost/atomic.hpp>
 #include <boost/foreach.hpp>
 #include <boost/thread/condition_variable.hpp>
 #include <boost/thread/locks.hpp>
@@ -60,11 +61,8 @@ private:
      */
     unsigned int nTodo;
 
-    //! Mutex to protect fQuit
-    boost::mutex mutex_fQuit;
-
     //! Whether we're shutting down.
-    bool fQuit;
+    boost::atomic<bool> fQuit;
 
     //! The maximum number of elements to be processed in one batch
     unsigned int nBatchSize;
@@ -85,20 +83,15 @@ private:
                     fAllOk &= fOk;
                     if (nTodo >= nNow)
                         nTodo -= nNow;
-                    LogPrint("parallel_2", "Entering cleanup and return: nTodo %d nNow %d\n", nTodo, nNow);
                     if (nTodo == 0 && !fMaster) {
                         // We processed the last element; inform the master it can exit and return the result
                         queue.clear();
                         condMaster.notify_one();
                     }
-                    boost::mutex::scoped_lock lock(mutex_fQuit);
-                    if (fQuit && !fMaster) {
+                    if (fQuit.load() && !fMaster) {
                         nTodo = 0;
                         queue.clear();
                         condMaster.notify_one();
-                        LogPrint("parallel_2", "Entering QUIT for worker thread: fOK is %d fAllOk is %d\n", fOk, fAllOk);
-                        LogPrint("parallel_2", "Entering QUIT for worker thread: queue size %d vcheck size %d nTodo %d nNow %d\n",
-                                              queue.size(), vChecks.size(), nTodo, nNow);
                     }
                 } else {
                     // first iteration
@@ -106,7 +99,6 @@ private:
                 }
                 // logically, the do loop starts here
                 while (queue.empty()) {
-                    //if ((fMaster || fQuit) && nTodo == 0) {
                     if ((fMaster) && nTodo == 0) {
                         nTotal--;
                         bool fRet = fAllOk;
@@ -114,13 +106,10 @@ private:
                         if (fMaster)
                             fAllOk = true;
                         // return the current status
-                        boost::mutex::scoped_lock lock(mutex_fQuit);
-                        fQuit = false; // reset the flag before returning
-                        LogPrint("parallel_2", "returning from master fQuit is: %d fRet is %d\n", fQuit, fRet);
+                        fQuit.store(false); // reset the flag before returning
                         return fRet;
                     }
                     nIdle++;
-                    LogPrint("parallel_2", "conditional wait nIdle %d\n", nIdle);
                     cond.wait(lock); // wait
                     nIdle--;
                 }
@@ -150,7 +139,7 @@ private:
 
 public:
     //! Create a new check queue
-    CCheckQueue(unsigned int nBatchSizeIn) : nIdle(0), nTotal(0), fAllOk(true), nTodo(0), fQuit(false), nBatchSize(nBatchSizeIn) {}
+    CCheckQueue(unsigned int nBatchSizeIn) : nIdle(0), nTotal(0), fAllOk(true), nTodo(0), nBatchSize(nBatchSizeIn) {fQuit.store(false);}
 
     //! Worker thread
     void Thread()
@@ -167,9 +156,7 @@ public:
     //! Quit execution of any remaining checks.
     void Quit()
     {
-       boost::mutex::scoped_lock lock(mutex_fQuit);
-       fQuit = true;
-       LogPrint("parallel_2", "setting fQuit to: %d\n", fQuit);
+       fQuit.store(true);
     }
 
     //! Add a batch of checks to the queue
