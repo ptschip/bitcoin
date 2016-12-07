@@ -226,12 +226,9 @@ bool ProcessMessages(CNode* pfrom);
  * @param[in]   pto             The node which we are sending messages to.
  */
 bool SendMessages(CNode* pto);
+// BU: moves to parallel.h
 /** Run an instance of the script checking thread */
-void ThreadScriptCheck();
-void ThreadScriptCheck2(); // BU: parallel block validation
-void ThreadScriptCheck3(); // BU: parallel block validation
-void ThreadScriptCheck4(); // BU: parallel block validation
-void AddAllScriptCheckQueues(); // BU: parallel block validation
+//void ThreadScriptCheck();
 
 /** Try to detect Partition (network isolation) attacks against us */
 void PartitionCheck(bool (*initialDownloadCheck)(), CCriticalSection& cs, const CBlockIndex *const &bestHeader, int64_t nPowTargetSpacing);
@@ -398,6 +395,7 @@ bool SequenceLocks(const CTransaction &tx, int flags, std::vector<int>* prevHeig
  */
 bool CheckSequenceLocks(const CTransaction &tx, int flags, LockPoints* lp = NULL, bool useExistingLockPoints = false);
 
+//  BU: This was all moved to parallel.cpp
 /**
  * Class that keeps track of number of signature operations
  * and bytes hashed to compute signature hashes.
@@ -496,7 +494,6 @@ public:
     void Add(CCheckQueue<CScriptCheck>* pqueueIn)
     {
         vScriptCheckQueues.push_back(CScriptCheckQueue(pqueueIn));
->>>>>>> 6888afd... Parallel Block Validation to mitigate DDOS big block attack
     }
 
     /* Returns a pointer to an available or selected scriptcheckqueue.
@@ -542,6 +539,7 @@ public:
         return dummy_mutex;
     }
 };
+
 
 /** Functions for disk access for blocks */
 bool WriteBlockToDisk(const CBlock& block, CDiskBlockPos& pos, const CMessageHeader::MessageStartChars& messageStart);
