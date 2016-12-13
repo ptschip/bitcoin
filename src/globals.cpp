@@ -102,6 +102,9 @@ CCriticalSection cs_vOneShots;
 
 CCriticalSection cs_statMap;
 
+/ from unlimited.cpp
+CCriticalSection cs_blocksemaphore;
+
 deque<string> vOneShots;
 std::map<CNetAddr, ConnectionHistory> mapInboundConnectionTracker;
 vector<std::string> vUseDNSSeeds;
