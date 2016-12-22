@@ -2604,6 +2604,10 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     CCheckQueue<CScriptCheck>* pScriptQueue = NULL;
     allScriptCheckQueues.GetScriptCheckQueueAndMutex(scriptcheck_mutex, pScriptQueue);
 
+    // Aquire the control that is used to wait for the script threads to finish. Do this after aquiring the
+    // scoped lock to ensure the scriptqueue is free and available.
+    CCheckQueueControl<CScriptCheck> control(fScriptChecks && nScriptCheckThreads ? pScriptQueue : NULL);
+
     if (fParallel) {
         // Initialize a PV thread session.
         if (!PV.Initialize(this_id, pindex, pScriptQueue)) {
@@ -2613,11 +2617,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     }
     boost::mutex::scoped_lock scriptlock(*scriptcheck_mutex); // aquire lock for the script check queue
 
-    // Aquire the control that is used to wait for the script threads to finish. Do this after aquiring the
-    // scoped lock to ensure the scriptqueue is free and available.
-    CCheckQueueControl<CScriptCheck> control(fScriptChecks && nScriptCheckThreads ? pScriptQueue : NULL);
-
-    
+ 
     // Start checking Inputs
     bool inOrphanCache;
     bool inVerifiedCache;
