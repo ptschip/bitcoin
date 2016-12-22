@@ -159,10 +159,10 @@ public:
     }
 
     //! Quit execution of any remaining checks.
-    void Quit()
+    void Quit(bool flag = true)
     {
         boost::mutex::scoped_lock lock(mutex_fQuit);
-        fQuit = true;
+        fQuit = flag;
     }
 
     //! Add a batch of checks to the queue
