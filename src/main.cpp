@@ -2609,7 +2609,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
     if (fParallel) {
         // Initialize a PV thread session.
-        if (!PV.Initialize(this_id, pindex, pScriptQueue)) {
+        if (!PV.Initialize(this_id, pindex)) {
             return false;
         }
         cs_main.unlock(); // unlock cs_main, we may be waiting here for a while before aquiring the scoped lock below

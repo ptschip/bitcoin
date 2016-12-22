@@ -109,7 +109,7 @@ public:
     CParallelValidation();
 
     /* Initialize a PV thread */
-    bool Initialize(const boost::thread::id this_id, const CBlockIndex* pindex, CCheckQueue<CScriptCheck>* pScriptQueue);
+    bool Initialize(const boost::thread::id this_id, const CBlockIndex* pindex);
 
     /* Cleanup PV threads after one has finished and won the validation race */
     void Cleanup(const CBlock& block, CBlockIndex* pindex);
