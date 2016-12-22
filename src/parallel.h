@@ -61,29 +61,12 @@ public:
 };
 
 /**
- * Hold all script check queues in one vector along with their associated mutex
- * When we use a queue we must always have a distinct mutex for it.  This way during IBD we
- * can repeately lock a queue without needing to worry about scheduling threads.  They'll just
- * wait until they're free to continue.  During parallel validation of new blocks we'll only
- * have the maximum number of 4 queues/blocks validating so locking is not need locking in that case
- * however because there is a boundary where IBD switches to new blocks we still use the lock when
- * doing Parallel Validation.
+ * Hold pointers to all script check queues in one vector 
  */
 class CAllScriptCheckQueues
 {
 private:
-    class CScriptCheckQueue
-    {
-        public:
-            CCheckQueue<CScriptCheck>* scriptcheckqueue;
-            boost::shared_ptr<boost::mutex> scriptcheck_mutex;
-
-            CScriptCheckQueue(CCheckQueue<CScriptCheck>* pqueueIn) : scriptcheck_mutex(new boost::mutex)
-            {
-                scriptcheckqueue = pqueueIn;
-            }
-    };
-    std::vector<CScriptCheckQueue> vScriptCheckQueues;
+    std::vector< CCheckQueue<CScriptCheck>*> vScriptCheckQueues;
 
     CCriticalSection cs;
 
@@ -93,7 +76,7 @@ public:
     void Add(CCheckQueue<CScriptCheck>* pqueueIn)
     {
         LOCK(cs);
-        vScriptCheckQueues.push_back(CScriptCheckQueue(pqueueIn));
+        vScriptCheckQueues.push_back(pqueueIn);
     }
 
     uint8_t Size()
@@ -102,12 +85,7 @@ public:
         return vScriptCheckQueues.size();
     }
 
-    /* Returns a pointer to an available or selected scriptcheckqueue and mutex.
-     * 1) during IBD each queue is selected in order.  There is no need to check if the queue is busy or not.
-     * 2) for new block validation there is a more complex selection process and also the ability to terminate long
-     *    running threads in the case where there are more requests for validation than queues.
-     */
-    void GetScriptCheckQueueAndMutex(boost::shared_ptr<boost::mutex>& mutex, CCheckQueue<CScriptCheck>*& pqueue);
+    CCheckQueue<CScriptCheck>* GetScriptCheckQueue();
 };
 extern CAllScriptCheckQueues allScriptCheckQueues; // Singleton class
 
@@ -154,7 +132,7 @@ public:
     bool ChainWorkHasChanged(const arith_uint256& nStartingChainWork);
 
     /* Set the correct locks and locking order before returning from a PV session */
-    void SetLocks(boost::mutex::scoped_lock& scriptlock);
+    void SetLocks();
 
 };
 extern CParallelValidation PV;  // Singleton class
