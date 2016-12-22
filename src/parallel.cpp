@@ -57,7 +57,7 @@ CParallelValidation::CParallelValidation()
     mapBlockValidationThreads.clear();
 }
 
-bool CParallelValidation::Initialize(const boost::thread::id this_id, const CBlockIndex* pindex, CCheckQueue<CScriptCheck>* pScriptQueue)
+bool CParallelValidation::Initialize(const boost::thread::id this_id, const CBlockIndex* pindex)
 {
 
     // Re-aquire cs_main
@@ -72,8 +72,15 @@ bool CParallelValidation::Initialize(const boost::thread::id this_id, const CBlo
         return false;
     }
 
-    // Now that we have a scriptqueue we can add it to the tracking map so we can call Quit() on it later if needed.
-    pValidationThread->pScriptQueue = pScriptQueue;
+    // Check whether a thread is aleady validating this very same block.  It can happen at times when a block arrives
+    // while a previous blocks is still validating or just finishing it's validation and grabs the next block to validate.
+    map<boost::thread::id, CParallelValidation::CHandleBlockMsgThreads>::iterator iter = mapBlockValidationThreads.begin();
+    while (iter != mapBlockValidationThreads.end()) {
+        if ((*iter).second.hash == pindex->GetBlockHash() && (*iter).first != this_id) {
+            return false;
+        }  
+        iter++;
+    }
 
     // Assign the nSequenceId for the block being validated in this thread. cs_main must be locked for lookup on pindex.
     if (pindex->nSequenceId > 0)
