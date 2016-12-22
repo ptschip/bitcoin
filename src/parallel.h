@@ -85,56 +85,29 @@ private:
     };
     std::vector<CScriptCheckQueue> vScriptCheckQueues;
 
+    CCriticalSection cs;
+
 public:
     CAllScriptCheckQueues() {}
 
     void Add(CCheckQueue<CScriptCheck>* pqueueIn)
     {
+        LOCK(cs);
         vScriptCheckQueues.push_back(CScriptCheckQueue(pqueueIn));
     }
 
     uint8_t Size()
     {
+        LOCK(cs);
         return vScriptCheckQueues.size();
     }
-
-    std::vector<CScriptCheckQueue> AllQueues()
-    {
-        return vScriptCheckQueues;
-    } 
 
     /* Returns a pointer to an available or selected scriptcheckqueue and mutex.
      * 1) during IBD each queue is selected in order.  There is no need to check if the queue is busy or not.
      * 2) for new block validation there is a more complex selection process and also the ability to terminate long
      *    running threads in the case where there are more requests for validation than queues.
      */
-    void GetScriptCheckQueueAndMutex(boost::shared_ptr<boost::mutex>& mutex, CCheckQueue<CScriptCheck>*& pqueue)
-    {
-        // for newly mined block validation, return the first queue not in use.
-        if (IsChainNearlySyncd() && vScriptCheckQueues.size() > 0) {
-            for (unsigned int i = 0; i < vScriptCheckQueues.size(); i++) {
-                if (vScriptCheckQueues[i].scriptcheckqueue->IsIdle()) {
-                    mutex = vScriptCheckQueues[i].scriptcheck_mutex;
-                    pqueue = vScriptCheckQueues[i].scriptcheckqueue;
-                    LogPrint("parallel", "next mutex and scriptqueue not in use is %d\n", i);
-                }
-                else 
-                    assert("Could not select Queue since none were idle");
-            }
-        }
-        // for IBD return the next queue. It doesn't matter if it's in use or not.
-        else if (vScriptCheckQueues.size() > 0) {
-            static unsigned int nextQueue = 0;
-            nextQueue++;
-
-            if (nextQueue >= vScriptCheckQueues.size())
-                nextQueue = 0;
-            mutex = vScriptCheckQueues[nextQueue].scriptcheck_mutex;
-            pqueue = vScriptCheckQueues[nextQueue].scriptcheckqueue;
-            LogPrint("parallel", "next mutex and scriptqueue selected is %d\n", nextQueue);
-        }
-        assert(pqueue != NULL);
-    }
+    void GetScriptCheckQueueAndMutex(boost::shared_ptr<boost::mutex>& mutex, CCheckQueue<CScriptCheck>*& pqueue);
 };
 extern CAllScriptCheckQueues allScriptCheckQueues; // Singleton class
 
