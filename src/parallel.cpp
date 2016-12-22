@@ -238,7 +238,7 @@ bool CParallelValidation::ChainWorkHasChanged(const arith_uint256& nStartingChai
     return false;
 }
 
-void CParallelValidation::SetLocks(boost::mutex::scoped_lock& scriptlock)
+void CParallelValidation::SetLocks()
 {
     // We must maintain locking order with cs_main, therefore we must make sure the scoped
     // scriptcheck lock is unlocked prior to locking cs_main.  That is because in the case
@@ -247,57 +247,57 @@ void CParallelValidation::SetLocks(boost::mutex::scoped_lock& scriptlock)
     // lock is held, thereby reversing the locking order and creating a possible deadlock.
     // Therefore to remedy the situation we simply unlock the scriptlock and do not enter into
     // any reversal of the locking order.
-    scriptlock.unlock();
     cs_main.lock();
 
-   boost::thread::id this_id(boost::this_thread::get_id()); 
-   LOCK(cs_blockvalidationthread);
-   {
+    boost::thread::id this_id(boost::this_thread::get_id()); 
+    LOCK(cs_blockvalidationthread);
+    {
          if (mapBlockValidationThreads.count(this_id))
              PV.mapBlockValidationThreads[this_id].pScriptQueue = NULL;
-   }
+    }
 }
 
 
-    void CAllScriptCheckQueues::GetScriptCheckQueueAndMutex(boost::shared_ptr<boost::mutex>& mutex, CCheckQueue<CScriptCheck>*& pqueue)
-    {
-        // for newly mined block validation, return the first queue not in use.
-        if (Size() > 0) {
-            while(true)
+CCheckQueue<CScriptCheck>* CAllScriptCheckQueues::GetScriptCheckQueue()
+{
+    // for newly mined block validation, return the first queue not in use.
+    CCheckQueue<CScriptCheck>* pqueue = NULL;
+    if (Size() > 0) {
+        while(true)
+        {
             {
-                {
-                LOCK2(cs_blockvalidationthread, cs);
-                for (unsigned int i = 0; i < vScriptCheckQueues.size(); i++) {
-                    if (vScriptCheckQueues[i].scriptcheckqueue->IsIdle()) {
-                        bool inUse = false;
-                        map<boost::thread::id, CParallelValidation::CHandleBlockMsgThreads>::iterator iter = PV.mapBlockValidationThreads.begin();
-                        while (iter != PV.mapBlockValidationThreads.end())
-                        {
-                            if ((*iter).second.pScriptQueue == vScriptCheckQueues[i].scriptcheckqueue) {
-                                inUse = true;
-                                break;
-                            }  
-                            iter++;
-                        }
-                        if (!inUse) {
-                            mutex = vScriptCheckQueues[i].scriptcheck_mutex;
-                            pqueue = vScriptCheckQueues[i].scriptcheckqueue;
-                            pqueue->Quit(false); // set to false because it still may be set to true from last run.
+            LOCK2(cs_blockvalidationthread, cs);
+            for (unsigned int i = 0; i < vScriptCheckQueues.size(); i++) {
+                if (vScriptCheckQueues[i]->IsIdle()) {
+                    bool inUse = false;
+                    map<boost::thread::id, CParallelValidation::CHandleBlockMsgThreads>::iterator iter = PV.mapBlockValidationThreads.begin();
+                    while (iter != PV.mapBlockValidationThreads.end())
+                    {
+                        if ((*iter).second.pScriptQueue == vScriptCheckQueues[i]) {
+                            inUse = true;
+                            break;
+                        }  
+                        iter++;
+                    }
+                    if (!inUse) {
+                        pqueue = vScriptCheckQueues[i];
+                        pqueue->Quit(false); // set to false because it still may be set to true from last run.
     
-                            boost::thread::id this_id(boost::this_thread::get_id());
-                            if (PV.mapBlockValidationThreads.count(this_id))
-                                PV.mapBlockValidationThreads[this_id].pScriptQueue = pqueue;
+                        boost::thread::id this_id(boost::this_thread::get_id());
+                        if (PV.mapBlockValidationThreads.count(this_id))
+                            PV.mapBlockValidationThreads[this_id].pScriptQueue = pqueue;
 
-                            LogPrint("parallel", "next mutex and scriptqueue not in use is %d\n", i);
-                            return;
-                        }
+                        LogPrint("parallel", "next mutex and scriptqueue not in use is %d\n", i);
+                        return pqueue;
                     }
                 }
-                }
-                LogPrint("parallel", "Sleeping 50 millis\n");
-                MilliSleep(50);
             }
+            }
+            LogPrint("parallel", "Sleeping 50 millis\n");
+            MilliSleep(50);
         }
-        assert(pqueue != NULL);
     }
+    assert(pqueue != NULL);
+    return pqueue;
+}
 

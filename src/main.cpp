@@ -2600,9 +2600,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
     // Get the next available mutex and the associated scriptcheckqueue. Then lock this thread
     // with the mutex so that the checking of inputs can be done with the chosen scriptcheckqueue.
-    boost::shared_ptr<boost::mutex> scriptcheck_mutex;
     CCheckQueue<CScriptCheck>* pScriptQueue = NULL;
-    allScriptCheckQueues.GetScriptCheckQueueAndMutex(scriptcheck_mutex, pScriptQueue);
+    pScriptQueue = allScriptCheckQueues.GetScriptCheckQueue();
 
     // Aquire the control that is used to wait for the script threads to finish. Do this after aquiring the
     // scoped lock to ensure the scriptqueue is free and available.
@@ -2615,7 +2614,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         }
         cs_main.unlock(); // unlock cs_main, we may be waiting here for a while before aquiring the scoped lock below
     }
-    boost::mutex::scoped_lock scriptlock(*scriptcheck_mutex); // aquire lock for the script check queue
 
  
     // Start checking Inputs
@@ -2643,7 +2641,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 //    disk if needed or a reorg) as soon as the first block makes it through and wins the validation race.
                 if (fParallel) {
                     if (PV.ChainWorkHasChanged(nStartingChainWork) || PV.QuitReceived(this_id)) {
-                        PV.SetLocks(scriptlock);
+                        PV.SetLocks();
                         return false;
                     }
                 }
@@ -2661,7 +2659,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             }
 
             if (!SequenceLocks(tx, nLockTimeFlags, &prevheights, *pindex)) {
-                PV.SetLocks(scriptlock);
+                PV.SetLocks();
                 return state.DoS(100, error("%s: contains a non-BIP68-final transaction", __func__),
                                  REJECT_INVALID, "bad-txns-nonfinal");
             }
@@ -2699,7 +2697,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                     bool fCacheResults = fJustCheck; /* Don't cache results if we're actually connecting blocks (still consult the cache, though) */
                     if (!CheckInputs(tx, state, viewTempCache, fScriptChecks, flags, fCacheResults, &resourceTracker, nScriptCheckThreads ? &vChecks : NULL)) {
                         if (fParallel) {
-                            PV.SetLocks(scriptlock);
+                            PV.SetLocks();
                         }
                         return error("ConnectBlock(): CheckInputs on %s failed with %s", 
                                               tx.GetHash().ToString(), FormatStateMessage(state));
@@ -2722,7 +2720,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         pos.nTxOffset += ::GetSerializeSize(tx, SER_DISK, CLIENT_VERSION);
 
         if (fParallel && PV.QuitReceived(this_id)) {
-            PV.SetLocks(scriptlock);
+            PV.SetLocks();
             return false;
         }
     }
@@ -2734,14 +2732,14 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     if (!control.Wait()) {
         // if we end up here then the signature verification failed and we must re-lock cs_main before returning.
         if (fParallel) {
-            PV.SetLocks(scriptlock);
+            PV.SetLocks();
         }
         return state.DoS(100, false);
     }
 
 
     if (fParallel) {
-        PV.SetLocks(scriptlock); // cs_main is re-aquired here before any final checks and updates
+        PV.SetLocks(); // cs_main is re-aquired here before any final checks and updates
         if (PV.QuitReceived(this_id))
             return false;
     }
