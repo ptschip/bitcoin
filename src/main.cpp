@@ -6067,7 +6067,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             thindata.UpdateInBound(nSizeThinBlock, blockSize);
             LogPrint("thin", "thin block stats: %s\n", thindata.ToString());
 
-            HandleBlockMessage(pfrom, strCommand, pfrom->thinBlock, inv);
+            PV.HandleBlockMessage(pfrom, strCommand, pfrom->thinBlock, inv);
         }
         else if (pfrom->thinBlockWaitingForTxns > 0) {
             // This marks the end of the transactions we've received. If we get this and we have NOT been able to
@@ -6081,12 +6081,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             }
             LogPrint("thin", "Missing %d Thinblock transactions, re-requesting a regular block\n",  
                        pfrom->thinBlockWaitingForTxns);
-<<<<<<< HEAD
             thindata.UpdateInBoundReRequestedTx(pfrom->thinBlockWaitingForTxns);
-
-=======
-            CThinBlockStats::UpdateInBoundReRequestedTx(pfrom->thinBlockWaitingForTxns);
->>>>>>> 992b440... Parallel Block Validation to mitigate DDOS big block attack
         }
     }
 
@@ -6147,7 +6142,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
             thindata.UpdateInBound(nSizeThinBlockTx + pfrom->nSizeThinBlock, blockSize);
             LogPrint("thin", "thin block stats: %s\n", thindata.ToString());
 
-            HandleBlockMessage(pfrom, strCommand, pfrom->thinBlock, inv);
+            PV.HandleBlockMessage(pfrom, strCommand, pfrom->thinBlock, inv);
         }
         else {
             LogPrint("thin", "Failed to retrieve all transactions for block\n");
@@ -6241,7 +6236,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv, 
         requester.Received(inv, pfrom, msgSize);
 
         // BUIP010 Extreme Thinblocks: Handle Block Message.
-        HandleBlockMessage(pfrom, strCommand, block, inv);
+        PV.HandleBlockMessage(pfrom, strCommand, block, inv);
     }
 
 

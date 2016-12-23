@@ -16,6 +16,8 @@
 #include "util.h"
 #include <vector>
 
+#include <boost/thread.hpp>
+
 using namespace std;
 
 // The number of script check queues we have available.  For every script check queue we can run an
@@ -25,6 +27,9 @@ extern CCriticalSection cs_blockvalidationthread;
 
 void AddAllScriptCheckQueuesAndThreads(int nScriptCheckThreads, boost::thread_group* threadGroup);
 void AddScriptCheckThreads(int i, CCheckQueue<CScriptCheck>* pqueue);
+
+extern CCriticalSection cs_semPV;
+extern CSemaphore *semPV; // semaphore for parallel validation threads
 
 /**
  * Closure representing one script verification
@@ -104,6 +109,12 @@ public:
     };
     map<boost::thread::id, CHandleBlockMsgThreads> mapBlockValidationThreads GUARDED_BY(cs_blockvalidationthread);
 
+private:
+
+    // BUIP010 Xtreme Thinblocks Variables
+    CCriticalSection cs_thinblocktimer;
+    map<uint256, uint64_t> mapThinBlockTimer;
+
 
 public:
     CParallelValidation();
@@ -134,9 +145,14 @@ public:
     /* Set the correct locks and locking order before returning from a PV session */
     void SetLocks();
 
+    /* Process a block message */
+    void HandleBlockMessage(CNode *pfrom, const std::string &strCommand, const CBlock &block, const CInv &inv);
+    void ClearThinBlockTimer(uint256 hash);
+    bool CheckThinblockTimer(uint256 hash);
 };
 extern CParallelValidation PV;  // Singleton class
 
 
+    void HandleBlockMessageThread(CNode *pfrom, const std::string &strCommand, const CBlock &block, const CInv &inv);
 
 #endif // BITCOIN_PARALLEL_H

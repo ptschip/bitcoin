@@ -105,6 +105,10 @@ CCriticalSection cs_statMap;
 / from unlimited.cpp
 CCriticalSection cs_blocksemaphore;
 
+//semaphore for parallel validation threads
+CCriticalSection cs_semPV;
+CSemaphore *semPV;
+
 deque<string> vOneShots;
 std::map<CNetAddr, ConnectionHistory> mapInboundConnectionTracker;
 vector<std::string> vUseDNSSeeds;
@@ -159,8 +163,6 @@ CSemaphore*  semOutbound = NULL;
 CSemaphore*  semOutboundAddNode = NULL; // BU: separate semaphore for -addnodes
 CNodeSignals g_signals;
 CAddrMan addrman;
-
-CSemaphore *semPV; // semaphore for parallel validation threads
 
 // BU: change locking of orphan map from using cs_main to cs_orphancache.  There is too much dependance on cs_main locks which
 //     are generally too broad in scope.
