@@ -11,6 +11,7 @@
 #include "pow.h"
 #include "timedata.h"
 #include "main.h"
+#include "parallel.h"
 #include "txmempool.h"
 #include "unlimited.h"
 #include <sstream>
@@ -259,7 +260,7 @@ bool CXThinBlock::process(CNode* pfrom, int nSizeThinBlock, string strCommand)  
         LogPrint("thin", "thin block stats: %s\n", ss.c_str());
         requester.Received(GetInv(), pfrom, pfrom->nSizeThinBlock);
 
-        HandleBlockMessage(pfrom, strCommand, pfrom->thinBlock,  GetInv());
+        PV.HandleBlockMessage(pfrom, strCommand, pfrom->thinBlock,  GetInv());
     }
     else if (pfrom->thinBlockWaitingForTxns > 0) {
         // This marks the end of the transactions we've received. If we get this and we have NOT been able to
