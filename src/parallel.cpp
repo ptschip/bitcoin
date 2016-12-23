@@ -59,8 +59,14 @@ CParallelValidation::CParallelValidation()
 
 bool CParallelValidation::Initialize(const boost::thread::id this_id, const CBlockIndex* pindex)
 {
+    AssertLockHeld(cs_main);
 
-    // Re-aquire cs_main
+    if (chainActive.Tip()->nChainWork > pindex->nChainWork) {
+        LogPrintf("returning because chainactive tip is now ahead of chainwork for this block\n");
+        return false;
+    }
+
+
     LOCK(cs_blockvalidationthread);
     CHandleBlockMsgThreads * pValidationThread = &mapBlockValidationThreads[this_id];
 
@@ -294,7 +300,7 @@ CCheckQueue<CScriptCheck>* CAllScriptCheckQueues::GetScriptCheckQueue()
                         if (PV.mapBlockValidationThreads.count(this_id))
                             PV.mapBlockValidationThreads[this_id].pScriptQueue = pqueue;
 
-                        LogPrint("parallel", "next mutex and scriptqueue not in use is %d\n", i);
+                        LogPrint("parallel", "next scriptqueue not in use is %d\n", i);
                         return pqueue;
                     }
                 }
