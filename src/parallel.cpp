@@ -69,6 +69,7 @@ bool CParallelValidation::Initialize(const boost::thread::id this_id, const CBlo
 
     LOCK(cs_blockvalidationthread);
     CHandleBlockMsgThreads * pValidationThread = &mapBlockValidationThreads[this_id];
+    pValidationThread->hash = pindex->GetBlockHash();
 
     // We need to place a Quit here because we do not want to assign a script queue to a thread of activity
     // if another thread has just won the race and has sent an fQuit.
@@ -84,7 +85,7 @@ bool CParallelValidation::Initialize(const boost::thread::id this_id, const CBlo
     while (iter != mapBlockValidationThreads.end()) {
         if ((*iter).second.hash == pindex->GetBlockHash() && (*iter).first != this_id) {
             return false;
-        }  
+        }
         iter++;
     }
 
