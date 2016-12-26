@@ -3319,7 +3319,7 @@ static bool ActivateBestChainStep(CValidationState& state, const CChainParams& c
     while (fContinue && nHeight < pindexMostWork->nHeight) {
         // Don't iterate the entire list of potential improvements toward the best tip, as we likely only need
         // a few blocks along the way.
-        int nTargetHeight = std::min(nHeight + 32, pindexMostWork->nHeight);
+        int nTargetHeight = std::min(nHeight + (int)BLOCK_DOWNLOAD_WINDOW, pindexMostWork->nHeight);
         vpindexToConnect.clear();
         //vpindexToConnect.reserve(nTargetHeight - nHeight);
         CBlockIndex *pindexIter = pindexMostWork->GetAncestor(nTargetHeight);
@@ -3492,7 +3492,7 @@ bool ActivateBestChain(CValidationState &state, const CChainParams& chainparams,
                 //}
             }
         }
-    } while(pindexMostWork != chainActive.Tip());
+    } while(pindexMostWork > chainActive.Tip());
     CheckBlockIndex(chainparams.GetConsensus());
 
     // Write changes periodically to disk, after relay.
