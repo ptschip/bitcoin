@@ -115,11 +115,6 @@ extern CTweak<unsigned int> maxBlocksInTransitPerPeer;  // override the above
 extern CTweak<unsigned int> blockDownloadWindow;
 extern CTweak<uint64_t> reindexTypicalBlockSize;
 
-/** thread group map for parallel block validation */
-CCriticalSection cs_blockvalidationthread;
-map<boost::thread::id, CHandleBlockMsgThreads> mapBlockValidationThreads GUARDED_BY(cs_blockvalidationthread);
-
-/** BU: end **/
 
 /**
  * Returns true if there are nRequired or more blocks of minVersion or above
