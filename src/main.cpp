@@ -3317,6 +3317,13 @@ static bool ActivateBestChainStep(CValidationState& state, const CChainParams& c
     bool fBlock = true;
     int nHeight = pindexFork ? pindexFork->nHeight : -1;
     while (fContinue && nHeight < pindexMostWork->nHeight) {
+
+        // During IBD if there are many blocks to connect still it could be a while before shutting down
+        // and the user may think the shutdown has hung, so return here and stop connecting any remaining
+        // blocks.
+        if (ShutdownRequested())
+            return false;
+
         // Don't iterate the entire list of potential improvements toward the best tip, as we likely only need
         // a few blocks along the way.
         int nTargetHeight = std::min(nHeight + (int)BLOCK_DOWNLOAD_WINDOW, pindexMostWork->nHeight);
@@ -3330,6 +3337,7 @@ static bool ActivateBestChainStep(CValidationState& state, const CChainParams& c
         nHeight = nTargetHeight;
 
         // Connect new blocks.
+        CBlockIndex* pindexNewTip;
         BOOST_REVERSE_FOREACH(CBlockIndex *pindexConnect, vpindexToConnect) {
             if (!ConnectTip(state, chainparams, pindexConnect, pindexConnect == pindexMostWork && fBlock? pblock : NULL, fParallel)) {
                 if (state.IsInvalid()) {
@@ -3345,8 +3353,12 @@ static bool ActivateBestChainStep(CValidationState& state, const CChainParams& c
                     return false;
                 }
             } else {
+                pindexNewTip = pindexConnect;
+
                 // Notify external zmq listeners about the new tip.
-                GetMainSignals().UpdatedBlockTip(pindexConnect);
+                if (!IsInitialBlockDownload()) 
+                    GetMainSignals().UpdatedBlockTip(pindexConnect);
+
                 PruneBlockIndexCandidates();
                 if (!pindexOldTip || chainActive.Tip()->nChainWork > pindexOldTip->nChainWork) {
                     /* BU: these are commented out for parallel validation: 
@@ -3361,6 +3373,12 @@ static bool ActivateBestChainStep(CValidationState& state, const CChainParams& c
         }
         if (fContinue) pindexMostWork = FindMostWorkChain();
         fBlock = false; //read next blocks from disk
+
+        // Notify the UI with the new block tip information.
+        uiInterface.NotifyBlockTip(true, pindexNewTip);
+
+        // Update the syncd status after each block is handled
+        IsChainNearlySyncdInit();
     }
     if (fBlocksDisconnected) {
         mempool.removeForReorg(pcoinsTip, chainActive.Tip()->nHeight + 1, STANDARD_LOCKTIME_VERIFY_FLAGS);
@@ -3448,15 +3466,13 @@ bool ActivateBestChain(CValidationState &state, const CChainParams& chainparams,
 
             pindexNewTip = chainActive.Tip();
             pindexFork = chainActive.FindFork(pindexOldTip);
-            //fInitialDownload = IsInitialBlockDownload();
-            IsChainNearlySyncdInit();
-            fInitialDownload = !IsChainNearlySyncd();
+            fInitialDownload = IsInitialBlockDownload();
         }
         // When we reach this point, we switched to a new tip (stored in pindexNewTip).
 
-        // Always notify the UI if a new block tip was connected
+        // Relay Inventory
         if (pindexFork != pindexNewTip) {
-            uiInterface.NotifyBlockTip(fInitialDownload, pindexNewTip);
+            // BU move to activatebestchainstep  uiInterface.NotifyBlockTip(fInitialDownload, pindexNewTip);
 
             if (!fInitialDownload) {
                 // Find the hashes of all blocks that weren't previously in the best chain.
