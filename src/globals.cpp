@@ -102,7 +102,7 @@ CCriticalSection cs_vOneShots;
 
 CCriticalSection cs_statMap;
 
-/ from unlimited.cpp
+// from unlimited.cpp
 CCriticalSection cs_blocksemaphore;
 
 //semaphore for parallel validation threads

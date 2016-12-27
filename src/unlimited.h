@@ -217,62 +217,7 @@ extern CTweak<unsigned int> maxTxSize;
 extern CTweak<uint64_t> blockSigopsPerMb;
 extern CTweak<uint64_t> blockMiningSigopsPerMb;
 
-/**  Parallel Block Validation - begin **/
-
-// handling and tracking block validation threads
-struct CHandleBlockMsgThreads {
-    boost::thread* tRef;
-    CCheckQueue<CScriptCheck>* pScriptQueue;
-    uint256 hash;
-    uint256 hashPrevBlock;
-    uint32_t nSequenceId;
-    int64_t nStartTime;
-    uint64_t nBlockSize;
-    bool fQuit;
-};
-extern CCriticalSection cs_blockvalidationthread;
-extern std::map<boost::thread::id, CHandleBlockMsgThreads> mapBlockValidationThreads GUARDED_BY(cs_blockvalidationthread);
-void InterruptBlockValidationThreads();
-
-
-/**
- * Closure representing one script verification
- * Note that this stores references to the spending transaction 
- */
-class CScriptCheck
-{
-private:
-    ValidationResourceTracker* resourceTracker;
-    CScript scriptPubKey;
-    const CTransaction *ptxTo;
-    unsigned int nIn;
-    unsigned int nFlags;
-    bool cacheStore;
-    ScriptError error;
-
-public:
-    CScriptCheck(): resourceTracker(NULL), ptxTo(0), nIn(0), nFlags(0), cacheStore(false), error(SCRIPT_ERR_UNKNOWN_ERROR) {}
-    CScriptCheck(ValidationResourceTracker* resourceTrackerIn, const CCoins& txFromIn, const CTransaction& txToIn, unsigned int nInIn, unsigned int nFlagsIn, bool cacheIn) :
-        resourceTracker(resourceTrackerIn), scriptPubKey(txFromIn.vout[txToIn.vin[nInIn].prevout.n].scriptPubKey),
-        ptxTo(&txToIn), nIn(nInIn), nFlags(nFlagsIn), cacheStore(cacheIn), error(SCRIPT_ERR_UNKNOWN_ERROR) { }
-
-    bool operator()();
-
-    void swap(CScriptCheck &check) {
-        std::swap(resourceTracker, check.resourceTracker);
-        scriptPubKey.swap(check.scriptPubKey);
-        std::swap(ptxTo, check.ptxTo);
-        std::swap(nIn, check.nIn);
-        std::swap(nFlags, check.nFlags);
-        std::swap(cacheStore, check.cacheStore);
-        std::swap(error, check.error);
-
-    ScriptError GetScriptError() const { return error; }
-};
-
-/** Parallel Block Validation - end **/
-
-// Protocol changes:
+// Protocol Changes:
 
 enum {
   EXPEDITED_STOP   = 1,
@@ -281,9 +226,15 @@ enum {
 };
 
 enum {
-  EXPEDITED_MSG_HEADER   = 1,
-  EXPEDITED_MSG_XTHIN    = 2,
+  EXPEDITED_MSG_HDR   = 1,
+  EXPEDITED_MSG_XTHIN = 2,
 };
+
+
+/**  Parallel Block Validation - begin **/
+
+extern CCriticalSection cs_blockvalidationthread;
+void InterruptBlockValidationThreads();
 
 
 #endif
