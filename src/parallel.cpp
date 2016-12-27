@@ -362,7 +362,7 @@ void CParallelValidation::HandleBlockMessage(CNode *pfrom, const string &strComm
 }
 void HandleBlockMessageThread(CNode *pfrom, const string &strCommand, const CBlock &block, const CInv &inv)
 {
-    bool fParallel = true;
+
     int64_t startTime = GetTimeMicros();
     CValidationState state;
     uint64_t nSizeBlock = ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION);
@@ -374,9 +374,7 @@ void HandleBlockMessageThread(CNode *pfrom, const string &strCommand, const CBlo
     bool forceProcessing = pfrom->fWhitelisted && !IsInitialBlockDownload();
     const CChainParams& chainparams = Params();
     pfrom->firstBlock += 1;
-    if (!IsChainNearlySyncd() || !PV.Enabled()) // Don't run parallel validation during IBD.
-        fParallel = false;
-    ProcessNewBlock(state, chainparams, pfrom, &block, forceProcessing, NULL, fParallel);
+    ProcessNewBlock(state, chainparams, pfrom, &block, forceProcessing, NULL, PV.Enabled());
     int nDoS;
     if (state.IsInvalid(nDoS)) {
         LogPrintf("Invalid block due to %s\n", state.GetRejectReason().c_str());
