@@ -119,7 +119,10 @@ private:
 
 
 public:
+
     CParallelValidation();
+
+    CCriticalSection cs_blockvalidationthread;
 
     /* Initialize a PV thread */
     bool Initialize(const boost::thread::id this_id, const CBlockIndex* pindex);

@@ -488,7 +488,7 @@ CCheckQueue<CScriptCheck>* CAllScriptCheckQueues::GetScriptCheckQueue()
         while(true)
         {
             {
-            LOCK2(cs_blockvalidationthread, cs);
+            LOCK2(PV.cs_blockvalidationthread, cs);
             for (unsigned int i = 0; i < vScriptCheckQueues.size(); i++) {
                 if (vScriptCheckQueues[i]->IsIdle()) {
                     bool inUse = false;
