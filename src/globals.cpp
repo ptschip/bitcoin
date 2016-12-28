@@ -102,9 +102,6 @@ CCriticalSection cs_vOneShots;
 
 CCriticalSection cs_statMap;
 
-// from unlimited.cpp
-CCriticalSection cs_blocksemaphore;
-
 //semaphore for parallel validation threads
 CCriticalSection cs_semPV;
 CSemaphore *semPV;
@@ -195,7 +192,6 @@ CTweak<uint64_t> reindexTypicalBlockSize("reindex.typicalBlockSize","Set larger 
 CRequestManager requester;  // after the maps nodes and tweaks
 
 // Parallel Validation Variables
-CCriticalSection cs_blockvalidationthread;
 CParallelValidation PV;  // Singleton class
 CAllScriptCheckQueues allScriptCheckQueues; // Singleton class
 

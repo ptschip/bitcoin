@@ -42,9 +42,6 @@ using namespace std;
 extern CTxMemPool mempool; // from main.cpp
 static boost::atomic<uint64_t> nLargestBlockSeen(BLOCKSTREAM_CORE_MAX_BLOCK_SIZE); // track the largest block we've seen
 
-extern CCriticalSection cs_blockvalidationthread;
-extern CCriticalSection cs_blocksemaphore;
-
 bool IsTrafficShapingEnabled();
 
 std::string ExcessiveBlockValidator(const unsigned int& value,unsigned int* item,bool validate)
