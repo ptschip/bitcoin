@@ -161,18 +161,9 @@ extern bool fIsChainNearlySyncd;
 extern uint64_t LargestBlockSeen(uint64_t nBlockSize = 0);
 extern CCriticalSection cs_ischainnearlysyncd;
 
-extern bool HaveConnectThinblockNodes();
-extern bool HaveThinblockNodes();
-extern bool CheckThinblockTimer(uint256 hash);
-extern bool IsThinBlocksEnabled();
-extern bool CanThinBlockBeDownloaded(CNode* pto);
 extern bool IsChainNearlySyncd();
 extern void IsChainNearlySyncdInit();
-extern void BuildSeededBloomFilter(CBloomFilter& memPoolFilter, std::vector<uint256>& vOrphanHashes, uint256 hash);
 extern void LoadFilter(CNode *pfrom, CBloomFilter *filter);
-extern void ConnectToThinBlockNodes();
-extern void CheckNodeSupportForThinBlocks();
-extern void SendXThinBlock(CBlock &block, CNode* pfrom, const CInv &inv);
 
 extern bool CheckAndRequestExpeditedBlocks(CNode* pfrom);  // Checks to see if the node is configured in bitcoin.conf to be an expedited block source and if so, request them.
 extern void SendExpeditedBlock(CXThinBlock& thinBlock,unsigned char hops, const CNode* skip=NULL);
