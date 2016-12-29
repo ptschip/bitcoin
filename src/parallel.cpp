@@ -393,7 +393,7 @@ void HandleBlockMessageThread(CNode *pfrom, const string &strCommand, const CBlo
         double nValidationTime = (double)(GetTimeMicros() - startTime) / 1000000.0;
         if (strCommand != NetMsgType::BLOCK) {
             LogPrint("thin", "Processed ThinBlock %s in %.2f seconds\n", inv.hash.ToString(), (double)(GetTimeMicros() - startTime) / 1000000.0);
-            CThinBlockStats::UpdateValidationTime(nValidationTime);
+            thindata.UpdateValidationTime(nValidationTime);
         }
         else
             LogPrint("thin", "Processed Regular Block %s in %.2f seconds\n", inv.hash.ToString(), (double)(GetTimeMicros() - startTime) / 1000000.0);
@@ -428,7 +428,7 @@ void HandleBlockMessageThread(CNode *pfrom, const string &strCommand, const CBlo
     }
 
     // Clear the thinblock timer used for preferential download
-    PV.ClearThinBlockTimer(inv.hash);
+    thindata.ClearThinBlockTimer(inv.hash);
 
     // Erase any txns in the block from the orphan cache as they are no longer needed
     if (IsChainNearlySyncd()) {
@@ -448,35 +448,6 @@ void HandleBlockMessageThread(CNode *pfrom, const string &strCommand, const CBlo
     LOCK(cs_semPV);
     semPV->post();
     }
-}
-
-void CParallelValidation::ClearThinBlockTimer(uint256 hash)
-{
-    LOCK(cs_thinblocktimer);
-    if (mapThinBlockTimer.count(hash)) {
-        mapThinBlockTimer.erase(hash);
-        LogPrint("thin", "Clearing Preferential Thinblock timer\n");
-    }
-}
-
-bool CParallelValidation::CheckThinblockTimer(uint256 hash)
-{
-    LOCK(cs_thinblocktimer);
-    if (!mapThinBlockTimer.count(hash)) {
-        mapThinBlockTimer[hash] = GetTimeMillis();
-        LogPrint("thin", "Starting Preferential Thinblock timer\n");
-    }
-    else {
-        // Check that we have not exceeded the 10 second limit.
-        // If we have then we want to return false so that we can
-        // proceed to download a regular block instead.
-        uint64_t elapsed = GetTimeMillis() - mapThinBlockTimer[hash];
-        if (elapsed > 10000) {
-            LogPrint("thin", "Preferential Thinblock timer exceeded - downloading regular block instead\n");
-            return false;
-        }
-    }
-    return true;
 }
 
 
