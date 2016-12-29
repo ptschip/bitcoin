@@ -109,20 +109,14 @@ public:
         uint64_t nBlockSize;
         bool fQuit;
     };
+    CCriticalSection cs_blockvalidationthread;
     map<boost::thread::id, CHandleBlockMsgThreads> mapBlockValidationThreads GUARDED_BY(cs_blockvalidationthread);
-
-private:
-
-    // BUIP010 Xtreme Thinblocks Variables
-    CCriticalSection cs_thinblocktimer;
-    map<uint256, uint64_t> mapThinBlockTimer;
 
 
 public:
 
     CParallelValidation();
 
-    CCriticalSection cs_blockvalidationthread;
 
     /* Initialize a PV thread */
     bool Initialize(const boost::thread::id this_id, const CBlockIndex* pindex);
@@ -152,12 +146,10 @@ public:
 
     /* Process a block message */
     void HandleBlockMessage(CNode *pfrom, const std::string &strCommand, const CBlock &block, const CInv &inv);
-    void ClearThinBlockTimer(uint256 hash);
-    bool CheckThinblockTimer(uint256 hash);
 };
 extern CParallelValidation PV;  // Singleton class
 
 
-    void HandleBlockMessageThread(CNode *pfrom, const std::string &strCommand, const CBlock &block, const CInv &inv);
+void HandleBlockMessageThread(CNode *pfrom, const std::string &strCommand, const CBlock &block, const CInv &inv);
 
 #endif // BITCOIN_PARALLEL_H

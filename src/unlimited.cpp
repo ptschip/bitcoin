@@ -1107,21 +1107,6 @@ void LoadFilter(CNode *pfrom, CBloomFilter *filter)
     thindata.UpdateInBoundBloomFilter(nSizeFilter);
 }
 
-
-void ConnectToThinBlockNodes()
-{
-    // Connect to specific addresses
-    if (mapArgs.count("-connect-thinblock") && mapMultiArgs["-connect-thinblock"].size() > 0)
-    {
-        BOOST_FOREACH(const std::string& strAddr, mapMultiArgs["-connect-thinblock"])
-        {
-            CAddress addr;
-            OpenNetworkConnection(addr, NULL, strAddr.c_str());
-            MilliSleep(500);
-        }
-    }
-}
-
 bool CheckAndRequestExpeditedBlocks(CNode* pfrom)
 {
   if (pfrom->nVersion >= EXPEDITED_VERSION)
