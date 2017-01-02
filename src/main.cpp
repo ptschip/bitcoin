@@ -4095,8 +4095,12 @@ bool ProcessNewBlock(CValidationState& state, const CChainParams& chainparams, c
 	  }
     }
 
-    if (!ActivateBestChain(state, chainparams, pblock, fParallel))
-        return error("%s: ActivateBestChain failed", __func__);
+    if (!ActivateBestChain(state, chainparams, pblock, fParallel)) {
+        if (state.IsInvalid() || state.IsError())
+            return error("%s: ActivateBestChain failed", __func__);
+        else
+            return false;
+    }
 
     int64_t end = GetTimeMicros();
 
