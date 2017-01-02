@@ -267,7 +267,7 @@ void CParallelValidation::SetLocks()
     LOCK(cs_blockvalidationthread);
     {
          if (mapBlockValidationThreads.count(this_id))
-             PV.mapBlockValidationThreads[this_id].pScriptQueue = NULL;
+             mapBlockValidationThreads[this_id].pScriptQueue = NULL;
     }
 }
 
