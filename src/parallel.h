@@ -108,6 +108,7 @@ public:
         int64_t nStartTime;
         uint64_t nBlockSize;
         bool fQuit;
+        NodeId nodeid;
     };
     CCriticalSection cs_blockvalidationthread;
     map<boost::thread::id, CHandleBlockMsgThreads> mapBlockValidationThreads GUARDED_BY(cs_blockvalidationthread);
@@ -123,6 +124,9 @@ public:
 
     /* Cleanup PV threads after one has finished and won the validation race */
     void Cleanup(const CBlock& block, CBlockIndex* pindex);
+
+    /* Is this block already running a validation thread? */
+    bool IsAlreadyValidating(const NodeId id);
 
     /* Terminate All currently running Block Validation threads */
     void StopAllValidationThreads();

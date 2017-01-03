@@ -131,6 +131,12 @@ bool CXThinBlock::CheckBlockHeader(const CBlockHeader& block, CValidationState& 
     
 bool CXThinBlock::process(CNode* pfrom, int nSizeThinBlock, string strCommand)  // TODO: request from the "best" txn source not necessarily from the block source 
 {
+    // In PV we must prevent two thinblocks from simulaneously processing from that were recieved from the
+    // same peer. This would only happen as in the example of an expedited block coming in
+    // after an xthin request, because we would never explicitly request two xthins from the same peer.
+    if (PV.IsAlreadyValidating(pfrom->id))
+        return false;
+
     // Xpress Validation - only perform xval if the chaintip matches the last blockhash in the thinblock
     bool fXVal;
     {
