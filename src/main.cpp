@@ -2733,11 +2733,18 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     }
 
 
+    /*****************************************************************************************************************
+     *                         Start update of UTXO, if this block wins the validation race                          *
+     *****************************************************************************************************************/
+
+    // If in PV mode and we win the race then we lock everyone out before updating the UTXO and terminating any
+    // competing threads.
     if (fParallel) {
         PV.SetLocks(); // cs_main is re-aquired here before any final checks and updates
         if (PV.QuitReceived(this_id))
             return false;
     }
+    AssertLockHeld(cs_main);
 
 
     CAmount blockReward = nFees + GetBlockSubsidy(pindex->nHeight, chainparams.GetConsensus());
@@ -2750,14 +2757,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     if (fJustCheck)
         return true;
 
-
-    /*****************************************************************************************************************
-     *                    BU:  Start update of UTXO, if this block wins the validation race                          *
-     *****************************************************************************************************************/
-
-    // If we win the race then we lock everyone out, terminate the other competing threads and then update the UTXO
-    static CCriticalSection cs_updateutxo;
-    LOCK(cs_updateutxo);
  
     if (fParallel) {
         // Last check for chain work just in case the thread manages to get here before being terminated.
