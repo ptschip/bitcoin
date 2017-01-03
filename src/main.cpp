@@ -2764,7 +2764,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             return false; // no need to lock cs_main before returing as it should already be locked.
     }
  
-    //BU: parallel validation - Flush the temporary view to the base view.  This will now update the UTXO on disk.
+    //BU: parallel validation - Flush the temporary UTXO view to the base view.
     int64_t nUpdateCoinsTimeBegin = GetTimeMicros();
     LogPrint("parallel", "Updating UTXO for %s\n", block.GetHash().ToString());
     viewTempCache.Flush();
