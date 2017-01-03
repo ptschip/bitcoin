@@ -171,6 +171,20 @@ void CParallelValidation::Cleanup(const CBlock& block, CBlockIndex* pindex)
     }
 }
 
+bool CParallelValidation::IsAlreadyValidating(const NodeId nodeid)
+{
+    // Don't allow a second thinblock to validate if this node is already in the process of validating a block.
+    boost::thread::id this_id(boost::this_thread::get_id());
+    LOCK(cs_blockvalidationthread);
+    map<boost::thread::id, CParallelValidation::CHandleBlockMsgThreads>::iterator iter = mapBlockValidationThreads.begin();
+    while (iter != mapBlockValidationThreads.end()) {
+        if ((*iter).second.nodeid == nodeid) {
+            return true;
+        }
+        iter++;
+    }
+    return false;
+}
 
 void CParallelValidation::StopAllValidationThreads()
 {
@@ -354,6 +368,7 @@ void CParallelValidation::HandleBlockMessage(CNode *pfrom, const string &strComm
         pValidationThread->nStartTime = GetTimeMillis();
         pValidationThread->nBlockSize = ::GetSerializeSize(block, SER_NETWORK, PROTOCOL_VERSION);
         pValidationThread->fQuit = false;
+        pValidationThread->nodeid = pfrom->id;
         LogPrint("parallel", "Launching validation for %s with number of block validation threads running: %d\n", 
                               block.GetHash().ToString(), mapBlockValidationThreads.size());
 
