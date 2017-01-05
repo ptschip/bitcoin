@@ -2613,8 +2613,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     bool inVerifiedCache;
     // When in parallel mode then unlock cs_main for this loop to give any other threads
     // a chance to process in parallel. This is crucial for parallel validation to work. 
-    // NOTE: the only place where cs_main is needed is if we hit PV.ChainWorkHasChanged, which
-    //       internally grabs the cs_main lock when needed.
     for (unsigned int i = 0; i < block.vtx.size(); i++)
     {
         const CTransaction &tx = block.vtx[i];
@@ -2633,7 +2631,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                 //    disk if needed or a reorg) as soon as the first block makes it through and wins the validation race.
                 if (fParallel) {
                     if (PV.ChainWorkHasChanged(nStartingChainWork) || PV.QuitReceived(this_id)) {
-                        PV.SetLocks();
+                        PV.Release();
                         return false;
                     }
                 }
@@ -2651,7 +2649,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
             }
 
             if (!SequenceLocks(tx, nLockTimeFlags, &prevheights, *pindex)) {
-                if (fParallel) PV.SetLocks();
+                if (fParallel) PV.Release();
                 return state.DoS(100, error("%s: contains a non-BIP68-final transaction", __func__),
                                  REJECT_INVALID, "bad-txns-nonfinal");
             }
@@ -2692,7 +2690,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                     if (!CheckInputs(tx, state, viewTempCache, fScriptChecks, flags, fCacheResults, &resourceTracker, nScriptCheckThreads ? &vChecks : NULL)) {
                         if (fParallel) {
                             cs_main.lock();
-                            PV.SetLocks();
+                            PV.Release();
                         }
                         return error("ConnectBlock(): CheckInputs on %s failed with %s", 
                                               tx.GetHash().ToString(), FormatStateMessage(state));
@@ -2717,7 +2715,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         pos.nTxOffset += ::GetSerializeSize(tx, SER_DISK, CLIENT_VERSION);
 
         if (fParallel && PV.QuitReceived(this_id)) {
-            PV.SetLocks();
+            PV.Release();
             return false;
         }
     }
@@ -2731,7 +2729,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         // if we end up here then the signature verification failed and we must re-lock cs_main before returning.
         if (fParallel) {
             cs_main.lock();
-            PV.SetLocks();
+            PV.Release();
         }
         return state.DoS(100, false);
     }
@@ -2745,7 +2743,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     // If in PV mode and we win the race then we lock everyone out before updating the UTXO and terminating any
     // competing threads.
     if (fParallel) {
-        PV.SetLocks(); // cs_main is re-aquired here before any final checks and updates
+        PV.Release(); // cs_main is re-aquired here before any final checks and updates
         if (PV.QuitReceived(this_id))
             return false;
     }

@@ -266,7 +266,7 @@ bool CParallelValidation::ChainWorkHasChanged(const arith_uint256& nStartingChai
     return false;
 }
 
-void CParallelValidation::SetLocks()
+void CParallelValidation::Release()
 {
     // We must maintain locking order with cs_main, therefore we must make sure the scoped
     // scriptcheck lock is unlocked prior to locking cs_main.  That is because in the case
@@ -275,7 +275,8 @@ void CParallelValidation::SetLocks()
     // lock is held, thereby reversing the locking order and creating a possible deadlock.
     // Therefore to remedy the situation we simply unlock the scriptlock and do not enter into
     // any reversal of the locking order.
-//    cs_main.lock();
+
+    //cs_main.lock();
 
     boost::thread::id this_id(boost::this_thread::get_id()); 
     LOCK(cs_blockvalidationthread);

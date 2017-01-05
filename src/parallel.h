@@ -145,8 +145,8 @@ public:
     /* Used to determine if another thread has already updated the utxo and advance the chain tip */
     bool ChainWorkHasChanged(const arith_uint256& nStartingChainWork);
 
-    /* Set the correct locks and locking order before returning from a PV session */
-    void SetLocks();
+    /* Set the correct locks and locking orders and release the scriptqueue before returning from a PV session */
+    void Release();
 
     /* Process a block message */
     void HandleBlockMessage(CNode *pfrom, const std::string &strCommand, const CBlock &block, const CInv &inv);
