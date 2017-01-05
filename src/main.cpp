@@ -2590,16 +2590,13 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     // Create a temporary view of the UTXO set
     CCoinsViewCache viewTempCache(pcoinsTip);
 
-    // Section for boost scoped lock on the scriptcheck_mutex
     boost::thread::id this_id(boost::this_thread::get_id());
 
-    // Get the next available mutex and the associated scriptcheckqueue. Then lock this thread
-    // with the mutex so that the checking of inputs can be done with the chosen scriptcheckqueue.
+    // Get the next available scriptcheckqueue. 
     CCheckQueue<CScriptCheck>* pScriptQueue = NULL;
     pScriptQueue = allScriptCheckQueues.GetScriptCheckQueue();
 
-    // Aquire the control that is used to wait for the script threads to finish. Do this after aquiring the
-    // scoped lock to ensure the scriptqueue is free and available.
+    // Aquire the control that is used to wait for the script threads to finish.
     CCheckQueueControl<CScriptCheck> control(fScriptChecks && nScriptCheckThreads ? pScriptQueue : NULL);
 
     if (fParallel) {
@@ -2607,7 +2604,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         if (!PV.Initialize(this_id, pindex)) {
             return false;
         }
-        cs_main.unlock(); // unlock cs_main, we may be waiting here for a while before aquiring the scoped lock below
+        //cs_main.unlock();
     }
 
  
@@ -2684,6 +2681,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
                 if ((inOrphanCache) || (!inVerifiedCache && !inOrphanCache))
                 {
+                    if (fParallel) cs_main.unlock();
+
                     LogPrint("parallel_2", "checking inputs for tx: %d\n", i);
                     if (inOrphanCache)
                         nOrphansChecked++;
@@ -2692,6 +2691,7 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                     bool fCacheResults = fJustCheck; /* Don't cache results if we're actually connecting blocks (still consult the cache, though) */
                     if (!CheckInputs(tx, state, viewTempCache, fScriptChecks, flags, fCacheResults, &resourceTracker, nScriptCheckThreads ? &vChecks : NULL)) {
                         if (fParallel) {
+                            cs_main.lock();
                             PV.SetLocks();
                         }
                         return error("ConnectBlock(): CheckInputs on %s failed with %s", 
@@ -2699,6 +2699,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
                     }
                     control.Add(vChecks);
                     nChecked++;
+
+                    if (fParallel) cs_main.lock();
                 }
                 else {
                     vHashesToDelete.push_back(hash);
@@ -2724,13 +2726,16 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
 
     // Wait for all sig check threads to finish before updating utxo
     LogPrint("parallel", "Waiting for script threads to finish\n");
+    if (fParallel) cs_main.unlock();
     if (!control.Wait()) {
         // if we end up here then the signature verification failed and we must re-lock cs_main before returning.
         if (fParallel) {
+            cs_main.lock();
             PV.SetLocks();
         }
         return state.DoS(100, false);
     }
+    if (fParallel) cs_main.lock();
 
 
     /*****************************************************************************************************************
