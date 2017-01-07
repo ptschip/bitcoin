@@ -125,6 +125,9 @@ public:
     /* Cleanup PV threads after one has finished and won the validation race */
     void Cleanup(const CBlock& block, CBlockIndex* pindex);
 
+    /* Send quit to competing threads */
+    void QuitCompetingThreads(const CBlock& block);
+
     /* Is this block already running a validation thread? */
     bool IsAlreadyValidating(const NodeId id);
 

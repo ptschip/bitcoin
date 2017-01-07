@@ -98,11 +98,8 @@ bool CParallelValidation::Initialize(const boost::thread::id this_id, const CBlo
 
 void CParallelValidation::Cleanup(const CBlock& block, CBlockIndex* pindex)
 {
-    // First swap the block index sequence id's such that the winning block has the lowest id and all other id's
+    // Swap the block index sequence id's such that the winning block has the lowest id and all other id's
     // are still in their same order relative to each other.
-    // Then terminate all other threads that match our previous blockhash, and cleanup map before updating the tip.  
-    // This is in the case where we're doing IBD and we receive two of the same blocks, one a re-request.  
-    // Also, this handles an attack vector where someone blasts us with many of the same block.
     LOCK(cs_blockvalidationthread);
     {
         boost::thread::id this_id(boost::this_thread::get_id()); // get this thread's id
@@ -139,6 +136,16 @@ void CParallelValidation::Cleanup(const CBlock& block, CBlockIndex* pindex)
             }
             riter++;
         }
+
+    }
+}
+
+void CParallelValidation::QuitCompetingThreads(const CBlock& block)
+{
+    // Kill other competing threads but not this one.
+    LOCK(cs_blockvalidationthread);
+    {
+        boost::thread::id this_id(boost::this_thread::get_id()); // get this thread's id
 
         map<boost::thread::id, CHandleBlockMsgThreads>::iterator iter = mapBlockValidationThreads.begin();
         while (iter != mapBlockValidationThreads.end())

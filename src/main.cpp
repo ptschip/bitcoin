@@ -2743,6 +2743,8 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
         PV.SetLocks(); // cs_main is re-aquired here before any final checks and updates
         if (PV.QuitReceived(this_id))
             return false;
+        // We must kill any competing threads here before updating the UTXO.
+        PV.QuitCompetingThreads(block); 
     }
     AssertLockHeld(cs_main);
 
@@ -2824,11 +2826,6 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     int64_t nTime6 = GetTimeMicros(); nTimeCallbacks += nTime6 - nTime5;
     LogPrint("bench", "    - Callbacks: %.2fms [%.2fs]\n", 0.001 * (nTime6 - nTime5), nTimeCallbacks * 0.000001);
 
-
-    // After successful commit to UTXO, perform cleanup for Parallel Validation threads.
-    // This section must be peformed whether we are in fParallel or not because if we are validating a block we just
-    // mined we also have to check if there are any other threads we are running against which need to be terminated
-    // and also whether the nSequenceId needs to be updated.
     PV.Cleanup(block, pindex); // NOTE: this must be run whether in fParallel or not!
 
     // Delete hashes from unverified and preverified sets that will no longer be needed after the block is accepted.
