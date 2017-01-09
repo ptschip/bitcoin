@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # Copyright (c) 2014-2015 The Bitcoin Core developers
 # Copyright (c) 2015-2016 The Bitcoin Unlimited developers
 # Distributed under the MIT software license, see the accompanying
@@ -25,7 +25,7 @@ class ParallelTest (BitcoinTestFramework):
         self.sync_all()
 
     def run_test (self):
-        print "Mining blocks..."
+        print ("Mining blocks...")
 
         # Mine some blocks on node2 which we will need at the end to generate a few transactions from that node
         # in order to create the small block with just a few transactions in it.
@@ -40,51 +40,51 @@ class ParallelTest (BitcoinTestFramework):
         self.sync_all()
 
         # Create many utxo's
-        print "Generating txns..."
+        print ("Generating txns...")
         send_to = {}
         self.nodes[0].keypoolrefill(100)
         self.nodes[0].keypoolrefill(100)
-        for i in xrange(200):
+        for i in range(200):
             send_to[self.nodes[0].getnewaddress()] = Decimal("0.01")
         self.nodes[0].sendmany("", send_to)
         self.nodes[0].keypoolrefill(100)
         self.nodes[0].keypoolrefill(100)
-        for i in xrange(200):
+        for i in range(200):
             send_to[self.nodes[0].getnewaddress()] = Decimal("0.01")
         self.nodes[0].sendmany("", send_to)
         self.nodes[0].keypoolrefill(100)
         self.nodes[0].keypoolrefill(100)
-        for i in xrange(200):
+        for i in range(200):
             send_to[self.nodes[0].getnewaddress()] = Decimal("0.01")
         self.nodes[0].sendmany("", send_to)
         self.nodes[0].keypoolrefill(100)
         self.nodes[0].keypoolrefill(100)
-        for i in xrange(200):
+        for i in range(200):
             send_to[self.nodes[0].getnewaddress()] = Decimal("0.01")
         self.nodes[0].sendmany("", send_to)
         self.nodes[0].keypoolrefill(100)
         self.nodes[0].keypoolrefill(100)
-        for i in xrange(200):
+        for i in range(200):
             send_to[self.nodes[0].getnewaddress()] = Decimal("0.01")
         self.nodes[0].sendmany("", send_to)
         self.nodes[0].keypoolrefill(100)
         self.nodes[0].keypoolrefill(100)
-        for i in xrange(200):
+        for i in range(200):
             send_to[self.nodes[0].getnewaddress()] = Decimal("0.01")
         self.nodes[0].sendmany("", send_to)
         self.nodes[0].keypoolrefill(100)
         self.nodes[0].keypoolrefill(100)
-        for i in xrange(200):
+        for i in range(200):
             send_to[self.nodes[0].getnewaddress()] = Decimal("0.01")
         self.nodes[0].sendmany("", send_to)
         self.nodes[0].keypoolrefill(100)
         self.nodes[0].keypoolrefill(100)
-        for i in xrange(200):
+        for i in range(200):
             send_to[self.nodes[0].getnewaddress()] = Decimal("0.01")
         self.nodes[0].sendmany("", send_to)
         self.nodes[0].keypoolrefill(100)
         self.nodes[0].keypoolrefill(100)
-        for i in xrange(200):
+        for i in range(200):
             send_to[self.nodes[0].getnewaddress()] = Decimal("0.01")
         self.nodes[0].sendmany("", send_to)
 
@@ -98,7 +98,7 @@ class ParallelTest (BitcoinTestFramework):
         self.sync_all()
 
         # Send more transactions
-        print "Generating more txns..."
+        print ("Generating more txns...")
         output_total = Decimal(0)
         j = 0
         self.utxo = self.nodes[0].listunspent()
@@ -119,7 +119,7 @@ class ParallelTest (BitcoinTestFramework):
                 txns_to_send.append(self.nodes[0].signrawtransaction(raw_tx))
 
                 # send the transaction
-        for i in xrange(num_txns):
+        for i in range(num_txns):
             self.nodes[0].sendrawtransaction(txns_to_send[i]["hex"], True)
         while self.nodes[0].getmempoolinfo()['size'] < num_txns:
             time.sleep(1)
@@ -140,15 +140,15 @@ class ParallelTest (BitcoinTestFramework):
 
 
         # create transactions with many inputs
-        print "Generating even more txns..."
+        print ("Generating even more txns...")
         num_txns2 = 5
         self.utxo = self.nodes[0].listunspent()
-        for i in xrange(num_txns2):
+        for i in range(num_txns2):
             inputs = []
             outputs = {}
             output_total = Decimal(0)
             j = 1
-            print "utxo length " + str(len(self.utxo))
+            print ("utxo length " + str(len(self.utxo)))
             txns_to_send = []
             while j < 600:
                 utxo = self.utxo.pop()
@@ -167,7 +167,7 @@ class ParallelTest (BitcoinTestFramework):
 
         # Send big tx's which will now have many inputs
         num_range = 50
-        for i in xrange(num_range):
+        for i in range(num_range):
             self.nodes[0].sendtoaddress(self.nodes[0].getnewaddress(), 1)
 
         while self.nodes[0].getmempoolinfo()['size'] < (num_txns2 + num_range):
@@ -175,7 +175,7 @@ class ParallelTest (BitcoinTestFramework):
 
         # Send a few transactions from node2 that will get mined so that we will have at least
         # a few inputs to check when the two competing blocks enter parallel validation.
-        for i in xrange(10):
+        for i in range(10):
             self.nodes[2].sendtoaddress(self.nodes[2].getnewaddress(), "0.01")
 
         # Have node0 and node2 mine the same block which will compete to advance the chaintip when
@@ -190,7 +190,7 @@ class ParallelTest (BitcoinTestFramework):
         # memory pool on node 0 does not change within 5 seconds then we assume a reorg is not occurring
         # because a reorg would cause transactions to be placed in the mempool from the old block on node 0.
         old_mempoolbytes = self.nodes[0].getmempoolinfo()["bytes"]
-        for i in xrange(5):
+        for i in range(5):
             mempoolbytes = self.nodes[0].getmempoolinfo()["bytes"]
             if old_mempoolbytes != mempoolbytes:
                 assert("Reorg happened when it should not - Mempoolbytes has changed")
@@ -213,7 +213,7 @@ class ParallelTest (BitcoinTestFramework):
         # Wait here to make sure a re-org does not happen on node0 so we want to give it some time.  If the 
         # memory pool on node 0 does not change within 5 seconds then we assume a reorg is not occurring
         # because a reorg would cause transactions to be placed in the mempool from the old block on node 0.
-        for i in xrange(5):
+        for i in range(5):
             mempoolbytes = self.nodes[0].getmempoolinfo()["bytes"]
             if old_mempoolbytes != mempoolbytes:
                 assert("Reorg happened when it should not - Mempoolbytes has changed")
@@ -226,7 +226,7 @@ class ParallelTest (BitcoinTestFramework):
 
         # Send some transactions and Mine a block on node 2.  
         # This should cause node0 to re-org and all chains should now match.
-        for i in xrange(5):
+        for i in range(5):
             self.nodes[2].sendtoaddress(self.nodes[2].getnewaddress(), .01)
         self.nodes[2].generate(1)
         sync_blocks(self.nodes)
@@ -279,16 +279,16 @@ class ParallelTest (BitcoinTestFramework):
         self.nodes.append(start_node(5, self.options.tmpdir, ["-par=1", "-rpcworkqueue=64", "-rpcthreads=16", "-rpcservertimeout=0","-debug", "-use-thinblocks=0", "-excessiveblocksize=6000000", "-blockprioritysize=6000000", "-blockmaxsize=6000000"]))
 
         num_range = 50
-        for i in xrange(num_range):
+        for i in range(num_range):
             self.nodes[0].sendtoaddress(self.nodes[0].getnewaddress(), 0.1)
         num_range = 10
-        for i in xrange(num_range):
+        for i in range(num_range):
             self.nodes[2].sendtoaddress(self.nodes[2].getnewaddress(), 0.01)
-        for i in xrange(num_range):
+        for i in range(num_range):
             self.nodes[3].sendtoaddress(self.nodes[3].getnewaddress(), 0.01)
-        for i in xrange(num_range):
+        for i in range(num_range):
             self.nodes[4].sendtoaddress(self.nodes[4].getnewaddress(), 0.01)
-        for i in xrange(num_range):
+        for i in range(num_range):
             self.nodes[5].sendtoaddress(self.nodes[5].getnewaddress(), 0.01)
 
         # Mine 5 competing blocks. This should not cause a crash or failure to sync nodes.
