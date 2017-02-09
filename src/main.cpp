@@ -4014,7 +4014,8 @@ void FindFilesToPrune(std::set<int>& setFilesToPrune, uint64_t nPruneAfterHeight
                 break;
 
             // don't prune files that could have a block within MIN_BLOCKS_TO_KEEP of the main chain's tip but keep scanning
-            if (vinfoBlockFile[fileNumber].nHeightLast > nLastBlockWeCanPrune)
+            if (vinfoBlockFile[fileNumber].nHeightLast > nLastBlockWeCanPrune && 
+                chainActive.Height() >= (int)vinfoBlockFile[fileNumber].nHeightLast)
                 continue;
 
             PruneOneBlockFile(fileNumber);
