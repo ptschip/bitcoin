@@ -2581,9 +2581,11 @@ bool ConnectBlock(const CBlock& block, CValidationState& state, CBlockIndex* pin
     /*********************************************************************************************
      If in PV, unlock cs_main here so we have no contention when we're checking inputs and scripts
      *********************************************************************************************/
-    if (fParallel) cs_main.unlock();
+    if (fParallel) LEAVE_CRITICAL_SECTION(cs_main);
 
+    // Begin Scope for Boost Scope Guard
     {
+
     // Scope guard to make sure cs_main is set and resources released if we encounter an exception.
     BOOST_SCOPE_EXIT(&PV, &fParallel)
     {
