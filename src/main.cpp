@@ -1289,8 +1289,8 @@ bool AcceptToMemoryPoolWorker(CTxMemPool &pool,
         bool fSpendsCoinbase = false;
         BOOST_FOREACH (const CTxIn &txin, tx.vin)
         {
-            const CCoins *coins = view.AccessCoins(txin.prevout.hash);
-            if (coins->IsCoinBase())
+            const Coins &coin = view.AccessCoin(txin.prevout);
+            if (coin.IsCoinBase())
             {
                 fSpendsCoinbase = true;
                 break;
@@ -1558,15 +1558,8 @@ bool GetTransaction(const uint256 &hash,
 
     if (fAllowSlow)
     { // use coin database to locate block that contains transaction, and scan it
-        int nHeight = -1;
-        {
-            CCoinsViewCache &view = *pcoinsTip;
-            const CCoins *coins = view.AccessCoins(hash);
-            if (coins)
-                nHeight = coins->nHeight;
-        }
-        if (nHeight > 0)
-            pindexSlow = chainActive[nHeight];
+        const Coin &coin = AccessByTxid(*pcoinsTip, hash);
+        if (!coin.IsPruned()) pindexSlow = chainActive[coin.nHeight];
     }
 
     if (pindexSlow)
@@ -1819,18 +1812,11 @@ void UpdateCoins(const CTransaction &tx, CValidationState &state, CCoinsViewCach
         txundo.vprevout.reserve(tx.vin.size());
         BOOST_FOREACH (const CTxIn &txin, tx.vin)
         {
-            CCoinsModifier coins = inputs.ModifyCoins(txin.prevout.hash);
-            unsigned nPos = txin.prevout.n;
-
-            if (nPos >= coins->vout.size() || coins->vout[nPos].IsNull())
-                assert(false);
-            // mark an outpoint spent, and construct undo information
-            txundo.vprevout.emplace_back(coins->vout[nPos], coins->nHeight, coins->fCoinBase);
-            bool ret = coins->Spend(nPos);
-            assert(ret);
+            txundo.vprevout.emplace_back();
+            inputs.SpendCoin(txin.prevout, &txundo.vprevout.back());
         }
         // add outputs
-        inputs.ModifyNewCoins(tx.GetHash())->FromTx(tx, nHeight);
+        AddCoins(inputs, tx, nHeight);
     }
     else
     {
@@ -1891,20 +1877,20 @@ bool CheckTxInputs(const CTransaction &tx, CValidationState &state, const CCoins
     for (unsigned int i = 0; i < tx.vin.size(); i++)
     {
         const COutPoint &prevout = tx.vin[i].prevout;
-        const CCoins *coins = inputs.AccessCoins(prevout.hash);
-        assert(coins);
+        const Coin& coin = inputs.AccessCoin(prevout);
+        assert(!coin.IsPruned());
 
         // If prev is coinbase, check that it's matured
-        if (coins->IsCoinBase())
+        if (coin.IsCoinBase())
         {
-            if (nSpendHeight - coins->nHeight < COINBASE_MATURITY)
+            if (nSpendHeight - coin.nHeight < COINBASE_MATURITY)
                 return state.Invalid(false, REJECT_INVALID, "bad-txns-premature-spend-of-coinbase",
-                    strprintf("tried to spend coinbase at depth %d", nSpendHeight - coins->nHeight));
+                    strprintf("tried to spend coinbase at depth %d", nSpendHeight - coin.nHeight));
         }
 
         // Check for negative or overflow input values
-        nValueIn += coins->vout[prevout.n].nValue;
-        if (!MoneyRange(coins->vout[prevout.n].nValue) || !MoneyRange(nValueIn))
+        nValueIn += coins.out.nValue;
+        if (!MoneyRange(coin.out.nValue) || !MoneyRange(nValueIn))
             return state.DoS(100, false, REJECT_INVALID, "bad-txns-inputvalues-outofrange");
     }
 
@@ -2095,27 +2081,25 @@ int ApplyTxInUndo(Coin&& undo, CCoinsViewCache& view, const COutPoint& out)
 {
     bool fClean = true;
 
-    CCoinsModifier coins = view.ModifyCoins(out.hash);
-    if (undo.nHeight != 0)
+    if (view.HaveCoins(out)) fClean = false; // overwriting transaction output
+
+    if (undo.nHeight == 0)
     {
-        // undo data contains height: this is the last output of the prevout tx being spent
-        if (!coins->IsPruned())
-            fClean = fClean && error("%s: undo data overwriting existing transaction", __func__);
-        coins->Clear();
-        coins->fCoinBase = undo.fCoinBase;
-        coins->nHeight = undo.nHeight;
-        coins->nVersion = undo.nVersion;
+        // Missing undo metadata (height and coinbase). Older versions included this
+        // information only in undo records for the last spend of a transactions'
+        // outputs. This implies that it must be present for some other output of the same tx.
+        const Coin& alternate = AccessByTxid(view, out.hash);
+        if (!alternate.IsPruned())
+        {
+            undo.nHeight = alternate.nHeight;
+            undo.fCoinBase = alternate.fCoinBase;
+        }
+        else
+        {
+            return false; // adding output for transaction without known metadata
+        }
     }
-    else
-    {
-        if (coins->IsPruned())
-            fClean = fClean && error("%s: undo data adding output to missing transaction", __func__);
-    }
-    if (coins->IsAvailable(out.n))
-        fClean = fClean && error("%s: undo data overwriting existing output", __func__);
-    if (coins->vout.size() < out.n + 1)
-        coins->vout.resize(out.n + 1);
-    coins->vout[out.n] = std::move(undo.out);
+    view.AddCoin(out, std::move(undo), undo.fCoinBase);
 
     return fClean;
 }
@@ -2151,21 +2135,18 @@ bool DisconnectBlock(const CBlock &block,
 
         // Check that all outputs are available and match the outputs in the block itself
         // exactly.
+        for (size_t o = 0; o < tx.vout.size(); o++)
         {
-            CCoinsModifier outs = view.ModifyCoins(hash);
-            outs->ClearUnspendable();
-
-            CCoins outsBlock(tx, pindex->nHeight);
-            // The CCoins serialization does not serialize negative numbers.
-            // No network rules currently depend on the version here, so an inconsistency is harmless
-            // but it must be corrected before txout nversion ever influences a network rule.
-            if (outsBlock.nVersion < 0)
-                outs->nVersion = outsBlock.nVersion;
-            if (*outs != outsBlock)
-                fClean = fClean && error("DisconnectBlock(): added transaction mismatch? database corrupted");
-
-            // remove outputs
-            outs->Clear();
+            if (!tx.vout[o].scriptPubKey.IsUnspendable())
+            {
+                COutPoint out(hash, o);
+                Coin coin;
+                view.SpendCoin(out, &coin);
+                if (tx.vout[o] != coin.out)
+                {
+                    fClean = false; // transaction output mismatch
+                }
+            }
         }
 
         // restore inputs
@@ -2437,12 +2418,16 @@ bool ConnectBlock(const CBlock &block,
 
         if (fEnforceBIP30)
         {
-            BOOST_FOREACH (const CTransaction &tx, block.vtx)
+            for (const auto& tx : block.vtx)
             {
-                const CCoins *coins = view.AccessCoins(tx.GetHash());
-                if (coins && !coins->IsPruned())
-                    return state.DoS(
-                        100, error("ConnectBlock(): tried to overwrite transaction"), REJECT_INVALID, "bad-txns-BIP30");
+                for (size_t o = 0; o < tx->vout.size(); o++)
+                {
+                    if (view.HaveCoins(COutPoint(tx->GetHash(), o)))
+                    {
+                        return state.DoS(100, error("ConnectBlock(): tried to overwrite transaction"),
+                                         REJECT_INVALID, "bad-txns-BIP30");
+                    }
+                }
             }
         }
     }
@@ -2576,7 +2561,7 @@ bool ConnectBlock(const CBlock &block,
                 prevheights.resize(tx.vin.size());
                 for (size_t j = 0; j < tx.vin.size(); j++)
                 {
-                    prevheights[j] = viewTempCache.AccessCoins(tx.vin[j].prevout.hash)->nHeight;
+                    prevheights[j] = viewTempCache.AccessCoin(tx.vin[j].prevout).nHeight;
                 }
 
                 if (!SequenceLocks(tx, nLockTimeFlags, &prevheights, *pindex))
