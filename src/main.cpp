@@ -1941,10 +1941,8 @@ bool CheckInputs(const CTransaction &tx,
             for (unsigned int i = 0; i < tx.vin.size(); i++)
             {
                 const COutPoint &prevout = tx.vin[i].prevout;
-                const CCoins *coins = inputs.AccessCoins(prevout.hash);
-                if (!coins)
-                    LogPrintf("ASSERTION: no inputs available\n");
-                assert(coins);
+                const Coin &coin = inputs.AccessCoin(prevout);
+                assert(!coin.IsPruned());
 
                 // Verify signature
                 CScriptCheck check(resourceTracker, *coins, tx, i, flags, cacheStore);
