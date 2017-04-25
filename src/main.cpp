@@ -1825,15 +1825,9 @@ void UpdateCoins(const CTransaction &tx, CValidationState &state, CCoinsViewCach
             if (nPos >= coins->vout.size() || coins->vout[nPos].IsNull())
                 assert(false);
             // mark an outpoint spent, and construct undo information
-            txundo.vprevout.push_back(CTxInUndo(coins->vout[nPos]));
-            coins->Spend(nPos);
-            if (coins->vout.size() == 0)
-            {
-                CTxInUndo &undo = txundo.vprevout.back();
-                undo.nHeight = coins->nHeight;
-                undo.fCoinBase = coins->fCoinBase;
-                undo.nVersion = coins->nVersion;
-            }
+            txundo.vprevout.emplace_back(coins->vout[nPos], coins->nHeight, coins->fCoinBase);
+            bool ret = coins->Spend(nPos);
+            assert(ret);
         }
         // add outputs
         inputs.ModifyNewCoins(tx.GetHash())->FromTx(tx, nHeight);
@@ -2091,13 +2085,13 @@ bool AbortNode(CValidationState &state, const std::string &strMessage, const std
 } // anon namespace
 
 /**
- * Apply the undo operation of a CTxInUndo to the given chain state.
- * @param undo The undo object.
+ * Restore the UTXO in a Coin at a given COutPoint
+ * @param undo The Coin to be restored.
  * @param view The coins view to which to apply the changes.
  * @param out The out point that corresponds to the tx input.
- * @return True on success.
+ * @return A DisconnectResult as an int
  */
-static bool ApplyTxInUndo(const CTxInUndo &undo, CCoinsViewCache &view, const COutPoint &out)
+int ApplyTxInUndo(const Coin& undo, CCoinsViewCache& view, const COutPoint& out)
 {
     bool fClean = true;
 
@@ -2121,7 +2115,7 @@ static bool ApplyTxInUndo(const CTxInUndo &undo, CCoinsViewCache &view, const CO
         fClean = fClean && error("%s: undo data overwriting existing output", __func__);
     if (coins->vout.size() < out.n + 1)
         coins->vout.resize(out.n + 1);
-    coins->vout[out.n] = undo.txout;
+    coins->vout[out.n] = undo.out;
 
     return fClean;
 }
@@ -2183,7 +2177,7 @@ bool DisconnectBlock(const CBlock &block,
             for (unsigned int j = tx.vin.size(); j-- > 0;)
             {
                 const COutPoint &out = tx.vin[j].prevout;
-                const CTxInUndo &undo = txundo.vprevout[j];
+                const Coin &undo = txundo.vprevout[j];
                 if (!ApplyTxInUndo(undo, view, out))
                     fClean = false;
             }
