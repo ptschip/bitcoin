@@ -2091,7 +2091,7 @@ bool AbortNode(CValidationState &state, const std::string &strMessage, const std
  * @param out The out point that corresponds to the tx input.
  * @return A DisconnectResult as an int
  */
-int ApplyTxInUndo(const Coin& undo, CCoinsViewCache& view, const COutPoint& out)
+int ApplyTxInUndo(Coin&& undo, CCoinsViewCache& view, const COutPoint& out)
 {
     bool fClean = true;
 
@@ -2115,7 +2115,7 @@ int ApplyTxInUndo(const Coin& undo, CCoinsViewCache& view, const COutPoint& out)
         fClean = fClean && error("%s: undo data overwriting existing output", __func__);
     if (coins->vout.size() < out.n + 1)
         coins->vout.resize(out.n + 1);
-    coins->vout[out.n] = undo.out;
+    coins->vout[out.n] = std::move(undo.out);
 
     return fClean;
 }
@@ -2171,14 +2171,13 @@ bool DisconnectBlock(const CBlock &block,
         // restore inputs
         if (i > 0)
         { // not coinbases
-            const CTxUndo &txundo = blockUndo.vtxundo[i - 1];
+            CTxUndo &txundo = blockUndo.vtxundo[i - 1];
             if (txundo.vprevout.size() != tx.vin.size())
                 return error("DisconnectBlock(): transaction and undo data inconsistent");
             for (unsigned int j = tx.vin.size(); j-- > 0;)
             {
                 const COutPoint &out = tx.vin[j].prevout;
-                const Coin &undo = txundo.vprevout[j];
-                if (!ApplyTxInUndo(undo, view, out))
+                if (!ApplyTxInUndo(std::move(tx.vin[j].prevout), view, out))
                     fClean = false;
             }
         }
