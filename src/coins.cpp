@@ -268,14 +268,6 @@ unsigned int CCoinsViewCache::GetCacheSize() const {
     return cacheCoins.size();
 }
 
-const CTxOut &CCoinsViewCache::GetOutputFor(const CTxIn& input) const
-{
-    LOCK(cs_utxo);
-    const Coin& coin = AccessCoin(input.prevout);
-    assert(!coin.IsPruned());
-    return coin.out;
-}
-
 CAmount CCoinsViewCache::GetValueIn(const CTransaction& tx) const
 {
     LOCK(cs_utxo);
@@ -284,7 +276,7 @@ CAmount CCoinsViewCache::GetValueIn(const CTransaction& tx) const
 
     CAmount nResult = 0;
     for (unsigned int i = 0; i < tx.vin.size(); i++)
-        nResult += GetOutputFor(tx.vin[i]).nValue;
+        nResult += AccessCoin(tx.vin[i].prevout).out.nValue;
 
     return nResult;
 }
