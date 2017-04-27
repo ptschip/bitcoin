@@ -44,12 +44,13 @@ public:
     }
 
     CScriptCheck(ValidationResourceTracker *resourceTrackerIn,
-        const CCoins &txFromIn,
+        const CScript &scriptPubKeyIn,
+        const CAmount amountIn,
         const CTransaction &txToIn,
         unsigned int nInIn,
         unsigned int nFlagsIn,
         bool cacheIn)
-        : resourceTracker(resourceTrackerIn), scriptPubKey(txFromIn.vout[txToIn.vin[nInIn].prevout.n].scriptPubKey),
+        : resourceTracker(resourceTrackerIn), scriptPubKey(scriptPubKeyIn), amount(amountIn),
           ptxTo(&txToIn), nIn(nInIn), nFlags(nFlagsIn), cacheStore(cacheIn), error(SCRIPT_ERR_UNKNOWN_ERROR),
           sighashType(0)
     {

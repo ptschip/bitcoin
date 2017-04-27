@@ -1944,8 +1944,15 @@ bool CheckInputs(const CTransaction &tx,
                 const Coin &coin = inputs.AccessCoin(prevout);
                 assert(!coin.IsPruned());
 
+                // We very carefully only pass in things to CScriptCheck. This provides
+                // a sanity check that our caching is not introducing consensus
+                // failures through additional data in, eg, the coins being
+                // spent being checked as a part of CScriptCheck.
+                const CScript& scriptPubKey = coins->vout[prevout.n].scriptPubKey;
+                const CAmount amount = coins->vout[prevout.n].nValue;
+
                 // Verify signature
-                CScriptCheck check(resourceTracker, *coins, tx, i, flags, cacheStore);
+                CScriptCheck check(resourceTracker, scriptPubKey, amount, tx, i, flags, cacheStore);
                 if (pvChecks)
                 {
                     pvChecks->push_back(CScriptCheck());
@@ -1962,7 +1969,7 @@ bool CheckInputs(const CTransaction &tx,
                         // avoid splitting the network between upgraded and
                         // non-upgraded nodes.
                         CScriptCheck check2(
-                            NULL, *coins, tx, i, flags & ~STANDARD_NOT_MANDATORY_VERIFY_FLAGS, cacheStore);
+                            NULL, scriptPubKey, amount, tx, i, flags & ~STANDARD_NOT_MANDATORY_VERIFY_FLAGS, cacheStore);
                         if (check2())
                             return state.Invalid(
                                 false, REJECT_NONSTANDARD, strprintf("non-mandatory-script-verify-flag (%s)",
