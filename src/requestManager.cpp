@@ -366,7 +366,7 @@ void RequestBlock(CNode *pfrom, CInv obj)
                 // Must download a block from a ThinBlock peer
                 if (pfrom->mapThinBlocksInFlight.size() < 1 && CanThinBlockBeDownloaded(pfrom))
                 { // We can only send one thinblock per peer at a time
-                    pfrom->mapThinBlocksInFlight[inv2.hash] = GetTime();
+                    pfrom->mapThinBlocksInFlight[inv2.hash] = std::make_pair(GetTime(), pfrom->addrName);
                     inv2.type = MSG_XTHINBLOCK;
                     std::vector<uint256> vOrphanHashes;
                     {
@@ -390,7 +390,7 @@ void RequestBlock(CNode *pfrom, CInv obj)
                 // We can only send one thinblock per peer at a time
                 if (pfrom->mapThinBlocksInFlight.size() < 1 && CanThinBlockBeDownloaded(pfrom))
                 {
-                    pfrom->mapThinBlocksInFlight[inv2.hash] = GetTime();
+                    pfrom->mapThinBlocksInFlight[inv2.hash] = std::make_pair(GetTime(), pfrom->addrName);
                     inv2.type = MSG_XTHINBLOCK;
                     std::vector<uint256> vOrphanHashes;
                     {

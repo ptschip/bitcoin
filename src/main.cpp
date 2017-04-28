@@ -7207,7 +7207,7 @@ bool SendMessages(CNode* pto)
                     if (HaveConnectThinblockNodes() || (HaveThinblockNodes() && thindata.CheckThinblockTimer(pindex->GetBlockHash()))) {
                         // Must download a block from a ThinBlock peer
                         if (pto->mapThinBlocksInFlight.size() < 1 && CanThinBlockBeDownloaded(pto)) { // We can only send one thinblock per peer at a time
-                            pto->mapThinBlocksInFlight[pindex->GetBlockHash()] = GetTime();
+                            pto->mapThinBlocksInFlight[pindex->GetBlockHash()] = std::make_pair(GetTime(), pto->addrName);
                             std::vector<uint256> vOrphanHashes;
                             {
                                 LOCK(cs_orphancache);
@@ -7226,7 +7226,7 @@ bool SendMessages(CNode* pto)
                     else {
                         // Try to download a thinblock if possible otherwise just download a regular block
                         if (pto->mapThinBlocksInFlight.size() < 1 && CanThinBlockBeDownloaded(pto)) { // We can only send one thinblock per peer at a time
-                            pto->mapThinBlocksInFlight[pindex->GetBlockHash()] = GetTime();
+                            pto->mapThinBlocksInFlight[pindex->GetBlockHash()] = std::make_pair(GetTime(), pto->addrName);
                             std::vector<uint256> vOrphanHashes;
                             {
                                 LOCK(cs_orphancache);
