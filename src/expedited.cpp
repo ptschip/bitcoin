@@ -290,3 +290,14 @@ void SendExpeditedBlock(const CBlock &block, const CNode *skip)
     }
     // else, nothing to do
 }
+
+bool IsExpeditedNode(const CNode *pfrom)
+{
+    // Check if this node is an expedited node
+    BOOST_FOREACH(const std::string &strAddrNode, mapMultiArgs["-expeditedblock"])
+    {
+        if (pfrom->addrName == strAddrNode)
+            return true;
+    }
+    return false;
+}

@@ -6075,7 +6075,7 @@ bool ProcessMessage(CNode* pfrom, std::string strCommand, CDataStream& vRecv, in
     }
 
 
-    else if (strCommand == NetMsgType::XPEDITEDBLK && IsThinBlocksEnabled())
+    else if (strCommand == NetMsgType::XPEDITEDBLK && IsThinBlocksEnabled() && IsExpeditedNode(pfrom))
     {
         if (!pfrom->ThinBlockCapable())
         {
@@ -6269,7 +6269,8 @@ bool ProcessMessage(CNode* pfrom, std::string strCommand, CDataStream& vRecv, in
             pfrom->id,
             nSizeThinBlock);
 
-        if (!pfrom->mapThinBlocksInFlight.count(inv.hash))
+        // There must be a thinblock in fight with the exception of one from an expedited node
+        if (!pfrom->mapThinBlocksInFlight.count(inv.hash) && !IsExpeditedNode(pfrom))
         {
             LogPrint("thin", "Thinblock received but not requested %s  peer=%d\n",inv.hash.ToString(), pfrom->id);
             LOCK(cs_main);
