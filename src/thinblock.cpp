@@ -144,6 +144,12 @@ bool CThinBlock::process(CNode *pfrom, int nSizeThinBlock, string strCommand)
     }
     else if (pfrom->thinBlockWaitingForTxns > 0)
     {
+        // Since we can't process this thinblock then clear out the data from memory
+        pfrom->thinBlock.SetNull();
+        pfrom->xThinBlockHashes.clear();
+        pfrom->thinBlockHashes.clear();
+        pfrom->mapMissingTx.clear();
+
         // This marks the end of the transactions we've received. If we get this and we have NOT been able to
         // finish reassembling the block, we need to re-request the full regular block:
         vector<CInv> vGetData;
@@ -270,20 +276,22 @@ bool CXThinBlock::process(CNode *pfrom,
     pfrom->thinBlock.hashMerkleRoot = header.hashMerkleRoot;
     pfrom->thinBlock.hashPrevBlock = header.hashPrevBlock;
     pfrom->xThinBlockHashes = vTxHashes;
+    pfrom->thinBlockHashes.clear();
+    pfrom->mapMissingTx.clear();
+    pfrom->thinBlockWaitingForTxns = -1;
 
     // Create the mapMissingTx from all the supplied tx's in the xthinblock
-    map<uint256, CTransaction> mapMissingTx;
-    for (const CTransaction tx : vMissingTx)
-        mapMissingTx[tx.GetHash()] = tx;
+    BOOST_FOREACH (const CTransaction tx, vMissingTx)
+        pfrom->mapMissingTx[tx.GetHash().GetCheapHash()] = tx;
 
     // Create a map of all 8 bytes tx hashes pointing to their full tx hash counterpart
     // We need to check all transaction sources (orphan list, mempool, and new (incoming) transactions in this block)
     // for a collision.
-    int missingCount = 0;
     int unnecessaryCount = 0;
     bool collision = false;
     map<uint64_t, uint256> mapPartialTxHash;
     vector<uint256> memPoolHashes;
+    set<uint64_t> setHashesToRequest;
 
     bool fMerkleRootCorrect = true;
     {
@@ -310,9 +318,9 @@ bool CXThinBlock::process(CNode *pfrom,
                 collision = true;
             mapPartialTxHash[cheapHash] = memPoolHashes[i];
         }
-        for (map<uint256, CTransaction>::iterator mi = mapMissingTx.begin(); mi != mapMissingTx.end(); ++mi)
+        for (map<uint64_t, CTransaction>::iterator mi = pfrom->mapMissingTx.begin(); mi != pfrom->mapMissingTx.end(); ++mi)
         {
-            uint64_t cheapHash = (*mi).first.GetCheapHash();
+            uint64_t cheapHash = (*mi).first;
             // Check for cheap hash collision. Only mark as collision if the full hash is not the same,
             // because the same tx could have been received into the mempool during the request of the xthinblock.
             // In that case we would have the same transaction twice, so it is not a real cheap hash collision and we
@@ -320,126 +328,139 @@ bool CXThinBlock::process(CNode *pfrom,
             const uint256 existingHash = mapPartialTxHash[cheapHash];
             if (!existingHash.IsNull())
             { // Check if we already have the cheap hash
-                if (existingHash != (*mi).first)
+                if (existingHash != (*mi).second.GetHash())
                 { // Check if it really is a cheap hash collision and not just the same transaction
                     collision = true;
                 }
             }
-            mapPartialTxHash[cheapHash] = (*mi).first;
+            mapPartialTxHash[cheapHash] = (*mi).second.GetHash();
         }
 
         if (!collision)
         {
             // Check that the merkleroot matches the merkelroot calculated from the hashes provided.
-            std::vector<uint256> fullTxHashes;
-            for (const uint64_t &cheapHash : vTxHashes)
-                fullTxHashes.push_back(mapPartialTxHash[cheapHash]);
-
-            bool mutated;
-            uint256 merkleroot = ComputeMerkleRoot(fullTxHashes, &mutated);
-            if (header.hashMerkleRoot != merkleroot)
+            uint256 nullhash;
+            BOOST_FOREACH (const uint64_t &cheapHash, vTxHashes)
             {
-                fMerkleRootCorrect = false;
-            }
-            else
-            {
-                // Look for each transaction in our various pools and buffers.
-                // With xThinBlocks the vTxHashes contains only the first 8 bytes of the tx hash.
-                for (const uint256 hash : fullTxHashes)
+                if (mapPartialTxHash.find(cheapHash) != mapPartialTxHash.end())
+                    pfrom->thinBlockHashes.push_back(mapPartialTxHash[cheapHash]);
+                else
                 {
-                    // Replace the truncated hash with the full hash value if it exists
-                    CTransaction tx;
-                    if (!hash.IsNull())
+                    pfrom->thinBlockHashes.push_back(nullhash); // placeholder
+                    setHashesToRequest.insert(cheapHash);
+                }
+            }
+
+            // Reconstruct the block if there are no hashes to re-request
+            if (setHashesToRequest.empty())
+            {
+                bool mutated;
+                uint256 merkleroot = ComputeMerkleRoot(pfrom->thinBlockHashes, &mutated);
+                if (header.hashMerkleRoot != merkleroot)
+                {
+                    fMerkleRootCorrect = false;
+                }
+                else
+                {
+                    LogPrint("thin", "Merkle Root check passed\n");
+
+                    // Look for each transaction in our various pools and buffers.
+                    // With xThinBlocks the vTxHashes contains only the first 8 bytes of the tx hash.
+                    BOOST_FOREACH (const uint256 hash, pfrom->thinBlockHashes)
                     {
-                        bool inMemPool = mempool.lookup(hash, tx);
-                        bool inMissingTx = mapMissingTx.count(hash) > 0;
-                        bool inOrphanCache = mapOrphanTransactions.count(hash) > 0;
-
-                        if ((inMemPool && inMissingTx) || (inOrphanCache && inMissingTx))
-                            unnecessaryCount++;
-
-                        if (inOrphanCache)
+                        // Replace the truncated hash with the full hash value if it exists
+                        CTransaction tx;
+                        uint64_t cheapHash = hash.GetCheapHash();
+                        if (!hash.IsNull())
                         {
-                            tx = mapOrphanTransactions[hash].tx;
-                            setUnVerifiedOrphanTxHash.insert(hash);
-                        }
-                        else if (inMemPool && fXVal)
-                            setPreVerifiedTxHash.insert(hash);
-                        else if (inMissingTx)
-                            tx = mapMissingTx[hash];
-                    }
-                    if (tx.IsNull())
-                        missingCount++;
+                            bool inMemPool = mempool.lookup(hash, tx);
+                            bool inMissingTx = pfrom->mapMissingTx.count(cheapHash) > 0;
+                            bool inOrphanCache = mapOrphanTransactions.count(hash) > 0;
 
-                    // This will push an empty/invalid transaction if we don't have it yet
-                    pfrom->thinBlock.vtx.push_back(tx);
+                            if ((inMemPool && inMissingTx) || (inOrphanCache && inMissingTx))
+                                unnecessaryCount++;
+
+                            if (inOrphanCache)
+                            {
+                                tx = mapOrphanTransactions[hash].tx;
+                                setUnVerifiedOrphanTxHash.insert(hash);
+                            }
+                            else if (inMemPool && fXVal)
+                                setPreVerifiedTxHash.insert(hash);
+                            else if (inMissingTx)
+                                tx = pfrom->mapMissingTx[cheapHash];
+                        }
+
+                        // This should almost never happen.
+                        if (tx.IsNull())
+                        {
+                            setHashesToRequest.insert(cheapHash);
+                        }
+
+                        // This will push an empty/invalid transaction if we don't have it yet
+                        pfrom->thinBlock.vtx.push_back(tx);
+                    }
                 }
             }
         }
     } // End locking cs_orphancache, mempool.cs and cs_xval
 
-    // This must be done outside of the above section or a deadlock may occur.
-    if (!fMerkleRootCorrect)
-    {
-        vector<CInv> vGetData;
-        vGetData.push_back(CInv(MSG_THINBLOCK, header.GetHash()));
-        pfrom->PushMessage("getdata", vGetData);
-        LogPrintf("xthinblock merkelroot does not match computed merkleroot - requesting full thinblock, peer=%d",
-            pfrom->GetId());
-        return true;
-    }
-
     // There is a remote possiblity of a Tx hash collision therefore if it occurs we re-request a normal
     // thinblock which has the full Tx hash data rather than just the truncated hash.
     if (collision)
     {
+        // This must be done outside of the mempool.cs lock or the deadlock
+        // detection with pfrom->cs_vSend will be triggered.
         vector<CInv> vGetData;
         vGetData.push_back(CInv(MSG_THINBLOCK, header.GetHash()));
-        pfrom->PushMessage("getdata", vGetData); // This must be done outside of the mempool.cs lock or the deadlock
-        // detection with pfrom->cs_vSend will be triggered.
-        LogPrintf("TX HASH COLLISION for xthinblock: re-requesting a thinblock\n");
+        pfrom->PushMessage(NetMsgType::GETDATA, vGetData); 
+        return error("TX HASH COLLISION for xthinblock: re-requesting a thinblock");
+    }
+
+    // This must be done outside of the above section or a deadlock may occur.
+    if (!fMerkleRootCorrect)
+    {
+        // Since we can't process this thinblock then clear out the data from memory
+        pfrom->thinBlock.SetNull();
+        pfrom->xThinBlockHashes.clear();
+        pfrom->thinBlockHashes.clear();
+        pfrom->mapMissingTx.clear();
+
+        LOCK(cs_main);
+        Misbehaving(pfrom->GetId(), 100);
+        return error("xthinblock merkle root does not match computed merkle root, peer=%d", pfrom->GetId());
+    }
+
+    LogPrint("thin", "Re-requesting: %d, unnecessary: %d, txs: %d full: %d\n", setHashesToRequest.size(),
+        unnecessaryCount, pfrom->thinBlock.vtx.size(), pfrom->mapMissingTx.size());
+
+    // If there are any missing hashes or transactions then we request them here.
+    // This must be done outside of the mempool.cs lock or may deadlock.
+    if (setHashesToRequest.size() > 0)
+    {
+        pfrom->thinBlockWaitingForTxns = setHashesToRequest.size();
+        CXRequestThinBlockTx thinBlockTx(header.GetHash(), setHashesToRequest);
+        pfrom->PushMessage(NetMsgType::GET_XBLOCKTX, thinBlockTx);
+
+        thindata.UpdateInBoundReRequestedTx(pfrom->thinBlockWaitingForTxns);
         return true;
     }
 
+    // We now have all the transactions now that are in this block
+    pfrom->thinBlockWaitingForTxns = -1;
+    int blockSize = pfrom->thinBlock.GetSerializeSize(SER_NETWORK, CBlock::CURRENT_VERSION);
+    LogPrint("thin", "Reassembled thin block for %s (%d bytes). Message was %d bytes, compression ratio %3.2f\n",
+        pfrom->thinBlock.GetHash().ToString(), blockSize, pfrom->nSizeThinBlock,
+        ((float)blockSize) / ((float)pfrom->nSizeThinBlock));
 
-    pfrom->thinBlockWaitingForTxns = missingCount;
-    LogPrint("thin", "thinblock waiting for: %d, unnecessary: %d, txs: %d full: %d\n", pfrom->thinBlockWaitingForTxns,
-        unnecessaryCount, pfrom->thinBlock.vtx.size(), mapMissingTx.size());
+    // Update run-time statistics of thin block bandwidth savings
+    thindata.UpdateInBound(pfrom->nSizeThinBlock, blockSize);
+    string ss = thindata.ToString();
+    LogPrint("thin", "thin block stats: %s\n", ss.c_str());
+    requester.Received(GetInv(), pfrom, pfrom->nSizeThinBlock);
 
-    if (pfrom->thinBlockWaitingForTxns == 0)
-    {
-        // We have all the transactions now that are in this block: try to reassemble and process.
-        pfrom->thinBlockWaitingForTxns = -1;
-        int blockSize = pfrom->thinBlock.GetSerializeSize(SER_NETWORK, CBlock::CURRENT_VERSION);
-        LogPrint("thin", "Reassembled thin block for %s (%d bytes). Message was %d bytes, compression ratio %3.2f\n",
-            pfrom->thinBlock.GetHash().ToString(), blockSize, pfrom->nSizeThinBlock,
-            ((float)blockSize) / ((float)pfrom->nSizeThinBlock));
-
-        // Update run-time statistics of thin block bandwidth savings
-        thindata.UpdateInBound(pfrom->nSizeThinBlock, blockSize);
-        string ss = thindata.ToString();
-        LogPrint("thin", "thin block stats: %s\n", ss.c_str());
-        requester.Received(GetInv(), pfrom, pfrom->nSizeThinBlock);
-
-        PV.HandleBlockMessage(pfrom, strCommand, pfrom->thinBlock, GetInv());
-    }
-    else if (pfrom->thinBlockWaitingForTxns > 0)
-    {
-        // This marks the end of the transactions we've received. If we get this and we have NOT been able to
-        // finish reassembling the block, we need to re-request the transactions we're missing:
-        set<uint64_t> setHashesToRequest;
-        for (size_t i = 0; i < pfrom->thinBlock.vtx.size(); i++)
-        {
-            if (pfrom->thinBlock.vtx[i].IsNull())
-                setHashesToRequest.insert(pfrom->xThinBlockHashes[i]);
-        }
-
-        // Re-request transactions that we are still missing
-        CXRequestThinBlockTx thinBlockTx(header.GetHash(), setHashesToRequest);
-        pfrom->PushMessage(NetMsgType::GET_XBLOCKTX, thinBlockTx);
-        LogPrint("thin", "Missing %d transactions for xthinblock, re-requesting\n", pfrom->thinBlockWaitingForTxns);
-        thindata.UpdateInBoundReRequestedTx(pfrom->thinBlockWaitingForTxns);
-    }
+    // Process the full block
+    PV.HandleBlockMessage(pfrom, strCommand, pfrom->thinBlock, GetInv());
 
     return true;
 }
