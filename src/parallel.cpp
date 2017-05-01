@@ -557,8 +557,12 @@ void HandleBlockMessageThread(CNode *pfrom, const string &strCommand, const CBlo
             {
                 if (pnode->mapThinBlocksInFlight.erase(inv.hash))
                 {
+                    // We're finished processing this thinblock so clear out the data from memory
                     pnode->thinBlockWaitingForTxns = -1;
                     pnode->thinBlock.SetNull();
+                    pnode->xThinBlockHashes.clear();
+                    pnode->thinBlockHashes.clear();
+                    pnode->mapMissingTx.clear();
                 }
                 if (pnode->mapThinBlocksInFlight.size() > 0)
                     nTotalThinBlocksInFlight++;
