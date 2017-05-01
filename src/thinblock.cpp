@@ -405,6 +405,7 @@ bool CXThinBlock::process(CNode *pfrom,
     // Create a map of all 8 bytes tx hashes pointing to their full tx hash counterpart
     // We need to check all transaction sources (orphan list, mempool, and new (incoming) transactions in this block)
     // for a collision.
+    int missingCount = 0;
     int unnecessaryCount = 0;
     bool collision = false;
     map<uint64_t, uint256> mapPartialTxHash;
@@ -470,6 +471,9 @@ bool CXThinBlock::process(CNode *pfrom,
                 }
             }
 
+            // We don't need this after here.
+            mapPartialTxHash.clear();
+
             // Reconstruct the block if there are no hashes to re-request
             if (setHashesToRequest.empty())
             {
@@ -512,9 +516,7 @@ bool CXThinBlock::process(CNode *pfrom,
 
                         // This should almost never happen.
                         if (tx.IsNull())
-                        {
-                            setHashesToRequest.insert(cheapHash);
-                        }
+                            missingCount++;
 
                         // This will push an empty/invalid transaction if we don't have it yet
                         pfrom->thinBlock.vtx.push_back(tx);
@@ -563,6 +565,22 @@ bool CXThinBlock::process(CNode *pfrom,
 
         thindata.UpdateInBoundReRequestedTx(pfrom->thinBlockWaitingForTxns);
         return true;
+    }
+
+    // If there are still any missing transactions then we must clear out the thinblock data
+    // and re-request a full block (This should never happen because we just checked the various pools).
+    if (missingCount > 0)
+    {
+        // Since we can't process this thinblock then clear out the data from memory
+        pfrom->thinBlock.SetNull();
+        pfrom->xThinBlockHashes.clear();
+        pfrom->thinBlockHashes.clear();
+        pfrom->mapMissingTx.clear();
+
+        std::vector<CInv> vGetData;
+        vGetData.push_back(CInv(MSG_BLOCK, header.GetHash()));
+        pfrom->PushMessage(NetMsgType::GETDATA, vGetData);
+        return error("Still missing transactions for xthinblock: re-requesting a full block");
     }
 
     // We now have all the transactions now that are in this block
