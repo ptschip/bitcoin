@@ -88,6 +88,8 @@ public:
         READWRITE(blockhash);
         READWRITE(vMissingTx);
     }
+
+    bool process(CNode *pfrom, int msgSize, std::string strCommand);
 };
 // This class is used for retrieving a list of still missing transactions after receiving a "thinblock" message.
 // The CXThinBlockTx when recieved can be used to fill in the missing transactions after which it is sent
