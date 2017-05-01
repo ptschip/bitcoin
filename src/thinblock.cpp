@@ -123,6 +123,11 @@ bool CThinBlock::process(CNode *pfrom, int nSizeThinBlock, string strCommand)
             pfrom->thinBlock.vtx.size(), mapMissingTx.size());
     } // end lock cs_orphancache, mempool.cs, cs_xval
 
+    // Clear out data. We don't need it anymore.
+    pfrom->xThinBlockHashes.clear();
+    pfrom->thinBlockHashes.clear();
+    pfrom->mapMissingTx.clear();
+
     if (pfrom->thinBlockWaitingForTxns == 0)
     {
         // We have all the transactions now that are in this block: try to reassemble and process.
@@ -146,9 +151,6 @@ bool CThinBlock::process(CNode *pfrom, int nSizeThinBlock, string strCommand)
     {
         // Since we can't process this thinblock then clear out the data from memory
         pfrom->thinBlock.SetNull();
-        pfrom->xThinBlockHashes.clear();
-        pfrom->thinBlockHashes.clear();
-        pfrom->mapMissingTx.clear();
 
         // This marks the end of the transactions we've received. If we get this and we have NOT been able to
         // finish reassembling the block, we need to re-request the full regular block:
@@ -307,6 +309,11 @@ bool CXThinBlockTx::process(CNode *pfrom, int msgSize, string strCommand)
 
     LogPrint("thin", "Got %d Re-requested txs, needed %d of them\n", vMissingTx.size(), count);
 
+    // Clear out data. We don't need it anymore.
+    pfrom->xThinBlockHashes.clear();
+    pfrom->thinBlockHashes.clear();
+    pfrom->mapMissingTx.clear();
+
     // If we're still missing transactions then bail out and just request the full block. This should never
     // happen unless we're under some kind of attack or somehow we lost transactions out of our memory pool
     // while we were retreiving missing transactions.
@@ -314,9 +321,6 @@ bool CXThinBlockTx::process(CNode *pfrom, int msgSize, string strCommand)
     {
         // Since we can't process this thinblock then clear out the data from memory
         pfrom->thinBlock.SetNull();
-        pfrom->xThinBlockHashes.clear();
-        pfrom->thinBlockHashes.clear();
-        pfrom->mapMissingTx.clear();
 
         std::vector<CInv> vGetData;
         vGetData.push_back(CInv(MSG_BLOCK, blockhash));

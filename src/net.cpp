@@ -2817,21 +2817,25 @@ CNode::~CNode()
     CloseSocket(hSocket);
 
     if (pfilter)
-      {
+    {
         delete pfilter;
 	pfilter = NULL;  // BU
-      }
+    }
 
 
     // BUIP010 - Xtreme Thinblocks - begin section
     if (pThinBlockFilter)
-      {
+    {
         delete pThinBlockFilter;
         pThinBlockFilter = NULL;
-      }
+    }
+
     mapThinBlocksInFlight.clear();
     thinBlockWaitingForTxns = -1;
     thinBlock.SetNull();
+    xThinBlockHashes.clear();
+    thinBlockHashes.clear();
+    mapMissingTx.clear();
 
     // We must set this to false on disconnect otherwise we will have trouble reconnecting -addnode nodes
     // if the remote peer restarts.
