@@ -1,4 +1,5 @@
-// Copyright (c) 2011-2013 The Bitcoin Core developers
+// Copyright (c) 2011-2015 The Bitcoin Core developers
+// Copyright (c) 2015-2017 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -9,11 +10,14 @@
 #include <QDateTime>
 
 class AddressTableModel;
+class BanTableModel;
 class OptionsModel;
+class UnlimitedModel;
 class PeerTableModel;
 class TransactionTableModel;
 
 class CWallet;
+class CBlockIndex;
 
 QT_BEGIN_NAMESPACE
 class QTimer;
@@ -39,20 +43,33 @@ class ClientModel : public QObject
     Q_OBJECT
 
 public:
-    explicit ClientModel(OptionsModel *optionsModel, QObject *parent = 0);
+    explicit ClientModel(OptionsModel *optionsModel, UnlimitedModel* ul, QObject *parent = 0);
     ~ClientModel();
 
     OptionsModel *getOptionsModel();
     PeerTableModel *getPeerTableModel();
+    BanTableModel *getBanTableModel();
 
     //! Return number of connections, default is in- and outbound (total)
     int getNumConnections(unsigned int flags = CONNECTIONS_ALL) const;
     int getNumBlocks() const;
 
+    //! Return number of transactions in the mempool
+    long getMempoolSize() const;
+
+    //! Return number of transactions in the orphan pool
+    long getOrphanPoolSize() const;
+
+    //! Return the dynamic memory usage of the mempool
+    size_t getMempoolDynamicUsage() const;
+
+    //! BU: Return the transactions per second that are accepted into the mempool
+    double getTransactionsPerSecond() const;
+
     quint64 getTotalBytesRecv() const;
     quint64 getTotalBytesSent() const;
 
-    double getVerificationProgress() const;
+    double getVerificationProgress(const CBlockIndex *tip) const;
     QDateTime getLastBlockDate() const;
 
     //! Return true if core is doing initial block download
@@ -64,30 +81,31 @@ public:
 
     QString formatFullVersion() const;
     QString formatSubVersion() const;
-    QString formatBuildDate() const;
     bool isReleaseVersion() const;
     QString clientName() const;
     QString formatClientStartupTime() const;
+    QString dataDir() const;
+    UnlimitedModel *unlimitedModel;
 
 private:
     OptionsModel *optionsModel;
     PeerTableModel *peerTableModel;
+    BanTableModel *banTableModel;
 
-    int cachedNumBlocks;
-    QDateTime cachedBlockDate;
-    bool cachedReindexing;
-    bool cachedImporting;
-
-    QTimer *pollTimer;
+    QTimer *pollTimer1;
+    QTimer *pollTimer2;
 
     void subscribeToCoreSignals();
     void unsubscribeFromCoreSignals();
 
 Q_SIGNALS:
     void numConnectionsChanged(int count);
-    void numBlocksChanged(int count, const QDateTime& blockDate);
+    void numBlocksChanged(int count, const QDateTime& blockDate, double nVerificationProgress);
+    void mempoolSizeChanged(long count, size_t mempoolSizeInBytes);
+    void orphanPoolSizeChanged(long count);
     void alertsChanged(const QString &warnings);
     void bytesChanged(quint64 totalBytesIn, quint64 totalBytesOut);
+    void transactionsPerSecondChanged(double tansactionsPerSecond);  // BU:
 
     //! Fired when a message should be reported to the user
     void message(const QString &title, const QString &message, unsigned int style);
@@ -96,9 +114,11 @@ Q_SIGNALS:
     void showProgress(const QString &title, int nProgress);
 
 public Q_SLOTS:
-    void updateTimer();
+    void updateTimer1();
+    void updateTimer2();
     void updateNumConnections(int numConnections);
-    void updateAlert(const QString &hash, int status);
+    void updateAlert();
+    void updateBanlist();
 };
 
 #endif // BITCOIN_QT_CLIENTMODEL_H

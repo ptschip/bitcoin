@@ -1,5 +1,6 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2014 The Bitcoin Core developers
+// Copyright (c) 2009-2015 The Bitcoin Core developers
+// Copyright (c) 2015-2017 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -14,17 +15,20 @@
 
 using namespace std;
 
-string SanitizeString(const string& str)
+static const string CHARS_ALPHA_NUM = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+static const string SAFE_CHARS[] =
 {
-    /**
-     * safeChars chosen to allow simple messages/URLs/email addresses, but avoid anything
-     * even possibly remotely dangerous like & or >
-     */
-    static string safeChars("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ01234567890 .,;_/:?@()");
+    CHARS_ALPHA_NUM + " .,;-_/:?@()", // SAFE_CHARS_DEFAULT
+    CHARS_ALPHA_NUM + " .,;-_?@" // SAFE_CHARS_UA_COMMENT
+};
+
+string SanitizeString(const string& str, int rule)
+{
     string strResult;
     for (std::string::size_type i = 0; i < str.size(); i++)
     {
-        if (safeChars.find(str[i]) != std::string::npos)
+        if (SAFE_CHARS[rule].find(str[i]) != std::string::npos)
             strResult.push_back(str[i]);
     }
     return strResult;
@@ -475,34 +479,40 @@ bool ParseDouble(const std::string& str, double *out)
 std::string FormatParagraph(const std::string& in, size_t width, size_t indent)
 {
     std::stringstream out;
-    size_t col = 0;
     size_t ptr = 0;
-    while(ptr < in.size())
+    size_t indented = 0;
+    while (ptr < in.size())
     {
-        // Find beginning of next word
-        ptr = in.find_first_not_of(' ', ptr);
-        if (ptr == std::string::npos)
-            break;
-        // Find end of next word
-        size_t endword = in.find_first_of(' ', ptr);
-        if (endword == std::string::npos)
-            endword = in.size();
-        // Add newline and indentation if this wraps over the allowed width
-        if (col > 0)
-        {
-            if ((col + endword - ptr) > width)
-            {
-                out << '\n';
-                for(size_t i=0; i<indent; ++i)
-                    out << ' ';
-                col = 0;
-            } else
-                out << ' ';
+        size_t lineend = in.find_first_of('\n', ptr);
+        if (lineend == std::string::npos) {
+            lineend = in.size();
         }
-        // Append word
-        out << in.substr(ptr, endword - ptr);
-        col += endword - ptr + 1;
-        ptr = endword;
+        const size_t linelen = lineend - ptr;
+        const size_t rem_width = width - indented;
+        if (linelen <= rem_width) {
+            out << in.substr(ptr, linelen + 1);
+            ptr = lineend + 1;
+            indented = 0;
+        } else {
+            size_t finalspace = in.find_last_of(" \n", ptr + rem_width);
+            if (finalspace == std::string::npos || finalspace < ptr) {
+                // No place to break; just include the entire word and move on
+                finalspace = in.find_first_of("\n ", ptr);
+                if (finalspace == std::string::npos) {
+                    // End of the string, just add it and break
+                    out << in.substr(ptr);
+                    break;
+                }
+            }
+            out << in.substr(ptr, finalspace - ptr) << "\n";
+            if (in[finalspace] == '\n') {
+                indented = 0;
+            } else if (indent) {
+                out << std::string(indent, ' ');
+                indented = indent;
+            }
+            ptr = finalspace + 1;
+        }
     }
     return out.str();
 }

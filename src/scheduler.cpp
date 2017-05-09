@@ -1,8 +1,11 @@
 // Copyright (c) 2015 The Bitcoin Core developers
+// Copyright (c) 2015-2017 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include "scheduler.h"
+
+#include "reverselock.h"
 
 #include <assert.h>
 #include <boost/bind.hpp>
@@ -65,17 +68,19 @@ void CScheduler::serviceQueue()
             Function f = taskQueue.begin()->second;
             taskQueue.erase(taskQueue.begin());
 
-            // Unlock before calling f, so it can reschedule itself or another task
-            // without deadlocking:
-            lock.unlock();
-            f();
-            lock.lock();
+            {
+                // Unlock before calling f, so it can reschedule itself or another task
+                // without deadlocking:
+                reverse_lock<boost::unique_lock<boost::mutex> > rlock(lock);
+                f();
+            }
         } catch (...) {
             --nThreadsServicingQueue;
             throw;
         }
     }
     --nThreadsServicingQueue;
+    newTaskScheduled.notify_one();
 }
 
 void CScheduler::stop(bool drain)

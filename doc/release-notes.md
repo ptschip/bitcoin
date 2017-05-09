@@ -1,42 +1,68 @@
-(note: this is a temporary file, to be added-to by anybody, and moved to
-release-notes at release time)
+Bitcoin Unlimited version 0.12.1 is now available from:
+
+  <https://bitcoinunlimited.info/download>
+
+This is a new minor version release, including ........,
+various bugfixes and updated translations.
+
+Please report bugs using the issue tracker at github:
+
+  <https://github.com/BitcoinUnlimited/BitcoinUnlimited/issues>
+
+Upgrading and downgrading
+=========================
+
+How to Upgrade
+--------------
+
+If you are running an older version, shut it down. Wait until it has completely
+shut down (which might take a few minutes for older versions), then run the
+installer (on Windows) or just copy over /Applications/Bitcoin-Qt (on Mac) or
+bitcoind/bitcoin-qt (on Linux).
+
+Downgrade warning
+-----------------
+
+### Downgrade to a version < 0.12.0
+
+Because release 0.12.0 and later will obfuscate the chainstate on every
+fresh sync or reindex, the chainstate is not backwards-compatible with
+pre-0.12 versions of Bitcoin Core or other software.
+
+If you want to downgrade after you have done a reindex with 0.12.0 or later,
+you will need to reindex when you first start Bitcoin Core version 0.11 or
+earlier.
 
 Notable changes
 ===============
 
-Random-cookie RPC authentication
----------------------------------
+Example item
+---------------------------------------
 
-When no `-rpcpassword` is specified, the daemon now uses a special 'cookie'
-file for authentication. This file is generated with random content when the
-daemon starts, and deleted when it exits. Its contents are used as
-authentication token. Read access to this file controls who can access through
-RPC. By default it is stored in the data directory but its location can be
-overridden with the option `-rpccookiefile`.
+Example text.
 
-This is similar to Tor's CookieAuthentication: see
-https://www.torproject.org/docs/tor-manual.html.en
 
-This allows running bitcoind without having to do any manual configuration.
+- Full UTF-8 support in the RPC API. Non-ASCII characters in, for example,
+  wallet labels have always been malformed because they weren't taken into account
+  properly in JSON RPC processing. This is no longer the case. This also affects
+  the GUI debug console.
 
-Low-level RPC API changes
---------------------------
+C++11
+-----
 
-- Monetary amounts can be provided as strings. This means that for example the
-  argument to sendtoaddress can be "0.0001" instead of 0.0001. This can be an
-  advantage if a JSON library insists on using a lossy floating point type for
-  numbers, which would be dangerous for monetary amounts.
+Various code modernizations have been done. The Bitcoin Unlimited code base has
+started using C++11. This means that a C++11-capable compiler is now needed for
+building. Effectively this means GCC 4.7 or higher, or Clang 3.3 or higher.
 
-Option parsing behavior
------------------------
+When cross-compiling for a target that doesn't have C++11 libraries, configure with
+`./configure --enable-glibc-back-compat ... LDFLAGS=-static-libstdc++`.
 
-Command line options are now parsed strictly in the order in which they are
-specified. It used to be the case that `-X -noX` ends up, unintuitively, with X
-set, as `-X` had precedence over `-noX`. This is no longer the case. Like for
-other software, the last specified value for an option will hold.
+RPC low-level changes
+----------------------
 
-0.12.0 Change log
-=================
+- `gettxoutsetinfo` UTXO hash (`hash_serialized`) has changed. There was a divergence between
+  32-bit and 64-bit platforms, and the txids were missing in the hashed data. This has been
+  fixed, but this means that the output will be different than from previous versions.
 
 Detailed release notes follow. This overview includes changes that affect
 behavior, not code moves, refactors and string updates. For convenience in locating
@@ -45,11 +71,30 @@ git merge commit are mentioned.
 
 ### RPC and REST
 
+Asm script outputs replacements for OP_NOP2 and OP_NOP3
+-------------------------------------------------------
+
+OP_NOP2 has been renamed to OP_CHECKLOCKTIMEVERIFY by [BIP
+65](https://github.com/bitcoin/bips/blob/master/bip-0065.mediawiki)
+
+OP_NOP3 has been renamed to OP_CHECKSEQUENCEVERIFY by [BIP
+112](https://github.com/bitcoin/bips/blob/master/bip-0112.mediawiki)
+
+The following outputs are affected by this change:
+- RPC `getrawtransaction` (in verbose mode)
+- RPC `decoderawtransaction`
+- RPC `decodescript`
+- REST `/rest/tx/` (JSON format)
+- REST `/rest/block/` (JSON format when including extended tx details)
+- `bitcoin-tx -json`
+
 ### Configuration and command-line options
 
 ### Block and transaction handling
 
 ### P2P protocol and network code
+
+The p2p alert system has been removed in #7692 and the 'alert' message is no longer supported.
 
 ### Validation
 
@@ -59,9 +104,14 @@ git merge commit are mentioned.
 
 ### GUI
 
-### Tests
+### Tests and QA
 
 ### Miscellaneous
 
-- Removed bitrpc.py from contrib
+Credits
+=======
 
+Thanks to everyone who directly contributed to this release:
+
+
+As well as everyone that helped translating on [Transifex](https://www.transifex.com/projects/p/bitcoin/).

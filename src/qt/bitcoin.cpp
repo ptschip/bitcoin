@@ -1,4 +1,5 @@
-// Copyright (c) 2011-2014 The Bitcoin Core developers
+// Copyright (c) 2011-2015 The Bitcoin Core developers
+// Copyright (c) 2015-2017 The Bitcoin Unlimited developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -16,6 +17,7 @@
 #include "networkstyle.h"
 #include "optionsmodel.h"
 #include "platformstyle.h"
+#include "unlimitedmodel.h" // BU
 #include "splashscreen.h"
 #include "utilitydialog.h"
 #include "winshutdownmonitor.h"
@@ -26,7 +28,7 @@
 #endif
 
 #include "init.h"
-#include "rpcserver.h"
+#include "rpc/server.h"
 #include "scheduler.h"
 #include "ui_interface.h"
 #include "util.h"
@@ -91,7 +93,7 @@ static void InitMessage(const std::string &message)
  */
 static std::string Translate(const char* psz)
 {
-    return QCoreApplication::translate("bitcoin-core", psz).toStdString();
+    return QCoreApplication::translate("bitcoin-unlimited", psz).toStdString();
 }
 
 static QString GetLangTerritory()
@@ -163,7 +165,7 @@ void DebugMessageHandler(QtMsgType type, const QMessageLogContext& context, cons
 }
 #endif
 
-/** Class encapsulating Bitcoin Core startup and shutdown.
+/** Class encapsulating Bitcoin startup and shutdown.
  * Allows running startup and shutdown in a different thread from the UI thread.
  */
 class BitcoinCore: public QObject
@@ -201,8 +203,10 @@ public:
     /// Create payment server
     void createPaymentServer();
 #endif
+    /// parameter interaction/setup based on rules
+    void parameterSetup();
     /// Create options model
-    void createOptionsModel();
+    void createOptionsModel(bool resetSettings);
     /// Create main window
     void createWindow(const NetworkStyle *networkStyle);
     /// Create splash screen
@@ -234,6 +238,7 @@ Q_SIGNALS:
 private:
     QThread *coreThread;
     OptionsModel *optionsModel;
+    UnlimitedModel *unlimitedModel;
     ClientModel *clientModel;
     BitcoinGUI *window;
     QTimer *pollShutdownTimer;
@@ -266,13 +271,6 @@ void BitcoinCore::initialize()
     {
         qDebug() << __func__ << ": Running AppInit2 in thread";
         int rv = AppInit2(threadGroup, scheduler);
-        if(rv)
-        {
-            /* Start a dummy RPC thread if no RPC thread is active yet
-             * to handle timeouts.
-             */
-            StartDummyRPCThread();
-        }
         Q_EMIT initializeResult(rv);
     } catch (const std::exception& e) {
         handleRunawayException(&e);
@@ -286,7 +284,8 @@ void BitcoinCore::shutdown()
     try
     {
         qDebug() << __func__ << ": Running Shutdown in thread";
-        threadGroup.interrupt_all();
+        StartShutdown();
+        Interrupt(threadGroup);
         threadGroup.join_all();
         Shutdown();
         qDebug() << __func__ << ": Shutdown finished";
@@ -302,6 +301,7 @@ BitcoinApplication::BitcoinApplication(int &argc, char **argv):
     QApplication(argc, argv),
     coreThread(0),
     optionsModel(0),
+    unlimitedModel(0),
     clientModel(0),
     window(0),
     pollShutdownTimer(0),
@@ -316,14 +316,8 @@ BitcoinApplication::BitcoinApplication(int &argc, char **argv):
     // UI per-platform customization
     // This must be done inside the BitcoinApplication constructor, or after it, because
     // PlatformStyle::instantiate requires a QApplication
-#if defined(Q_OS_MAC)
-    std::string platformName = "macosx";
-#elif defined(Q_OS_WIN)
-    std::string platformName = "windows";
-#else
-    std::string platformName = "other";
-#endif
-    platformName = GetArg("-uiplatform", platformName);
+    std::string platformName;
+    platformName = GetArg("-uiplatform", BitcoinGUI::DEFAULT_UIPLATFORM);
     platformStyle = PlatformStyle::instantiate(QString::fromStdString(platformName));
     if (!platformStyle) // Fall back to "other" if specified name not found
         platformStyle = PlatformStyle::instantiate("other");
@@ -350,6 +344,8 @@ BitcoinApplication::~BitcoinApplication()
     optionsModel = 0;
     delete platformStyle;
     platformStyle = 0;
+    delete unlimitedModel;
+    unlimitedModel=0;
 }
 
 #ifdef ENABLE_WALLET
@@ -359,9 +355,10 @@ void BitcoinApplication::createPaymentServer()
 }
 #endif
 
-void BitcoinApplication::createOptionsModel()
+void BitcoinApplication::createOptionsModel(bool resetSettings)
 {
-    optionsModel = new OptionsModel();
+    optionsModel = new OptionsModel(NULL, resetSettings);
+    unlimitedModel = new UnlimitedModel();  // BU
 }
 
 void BitcoinApplication::createWindow(const NetworkStyle *networkStyle)
@@ -402,6 +399,12 @@ void BitcoinApplication::startThread()
     connect(this, SIGNAL(stopThread()), coreThread, SLOT(quit()));
 
     coreThread->start();
+}
+
+void BitcoinApplication::parameterSetup()
+{
+    InitLogging();
+    InitParameterInteraction();
 }
 
 void BitcoinApplication::requestInitialize()
@@ -448,7 +451,7 @@ void BitcoinApplication::initializeResult(int retval)
         paymentServer->setOptionsModel(optionsModel);
 #endif
 
-        clientModel = new ClientModel(optionsModel);
+        clientModel = new ClientModel(optionsModel,unlimitedModel);
         window->setClientModel(clientModel);
 
 #ifdef ENABLE_WALLET
@@ -500,7 +503,7 @@ void BitcoinApplication::shutdownResult(int retval)
 void BitcoinApplication::handleRunawayException(const QString &message)
 {
     QMessageBox::critical(0, "Runaway exception", BitcoinGUI::tr("A fatal error occurred. Bitcoin can no longer continue safely and will quit.") + QString("\n\n") + message);
-    ::exit(1);
+    ::exit(EXIT_FAILURE);
 }
 
 WId BitcoinApplication::getMainWinId() const
@@ -509,6 +512,127 @@ WId BitcoinApplication::getMainWinId() const
         return 0;
 
     return window->winId();
+}
+
+const char* APP_SETTINGS_MIGRATED_FLAG = "fMigrated";
+/**
+* Checks to see if Qt App Settings have already had migration performed, based
+* on the presence of setting `fMigrated` with a value of true.
+* @param[in] to      App settings to check for prior migration and writability
+* @param[in] from    App settings to check for keys to migrate
+* @return true if migration is possible and not yet performed, otherwise false
+*/
+bool CanMigrateQtAppSettings(const QSettings &to, const QSettings &from)
+{
+    //first check to see if the desired settings are already marked as migrated
+    if (to.value(APP_SETTINGS_MIGRATED_FLAG, false).toBool())
+        return false;
+
+    //next verify that the source settings actually exist/have values
+    if (from.allKeys().size() <= 0)
+        return false;
+
+    //last verify that the desired settings are writable
+    if (!to.isWritable())
+        return error("%s: App Settings are not writable, migration skipped.", __func__);
+
+    return true;
+}
+
+/**
+* Create a backup of Qt App Settings
+* Backup will only be performed if there are settings to backup and the backup
+* location is writable.
+* @param[in] source      App settings to be backed up
+* @param[in] backupName  Backup location name
+* @return true if backup was successful or there were no settings to backup, otherwise false
+*/
+bool BackupQtAppSettings(const QSettings &source, const QString &backupName)
+{
+    //parameter saftey check
+    if (backupName.trimmed().size() <= 0)
+        return error("%s: Parameter backupName must contain a non-whitespace value.", __func__);
+
+    //verify there are settings to actually backup (if not just return true)
+    if (source.allKeys().size() <= 0)
+        return true;
+
+    //The backup settings location
+    QSettings backup(backupName, QAPP_APP_NAME_DEFAULT);
+
+    //verify that the backup location is writable
+    if (!backup.isWritable())
+        return error("%s: Unable to backup existing App Settings, backup location is not writable.", __func__);
+
+    //Get the list of all keys in the source location
+    QStringList keys = source.allKeys();
+
+    //Loop through all keys in the source location
+    //NOTE: Loop may not handle sub-keys correctly w/o modification (though currently there aren't any sub-keys)
+    Q_FOREACH(const QString& key, keys)
+    {
+        //copy every setting in source to backukp
+        backup.setValue(key, source.value(key));
+    }
+
+    LogPrintf("APP SETTINGS: Settings successfully backed up to '%s'\n", backupName.toStdString());
+
+    //NOTE: backup will go out of scope upon return so we don't need to manually call sync()
+
+    return true;
+}
+
+/**
+* Migrates Qt App Settings from a previously installed alternate client
+* implementation (Core, XT, Classic, pre-1.0.1 BU).
+* Migration will only be performed if there are alternate settings and a prior
+* migration has not been performed.
+* @param[in] oldOrg    Org name to migrate settings from
+* @param[in] newOrg    Org name to migrate settings to
+* @return true if migration was performed, otherwise false
+* @see CanMigrateQtAppSettings()
+* @see BackupQtAppSettings()
+*/
+bool TryMigrateQtAppSettings(const QString &oldOrg, const QString &newOrg)
+{
+    //parameter saftey checks
+    if (oldOrg.trimmed().size() <= 0)
+        return error("%s: Parameter oldOrg must contain a non-whitespace value.", __func__);
+    if (newOrg.trimmed().size() <= 0)
+        return error("%s: Parameter newOrg must contain a non-whitespace value.", __func__);
+
+    //The desired settings location
+    QSettings sink(newOrg, QAPP_APP_NAME_DEFAULT);
+    //The previous settings location
+    QSettings source(oldOrg, QAPP_APP_NAME_DEFAULT);
+
+    //Check to see if we actually can/need to migrate
+    if (!CanMigrateQtAppSettings(sink, source))
+        return false;
+
+    //as a saftey precaution save a backup copy of the current settings prior to overwriting
+    if (!BackupQtAppSettings(sink, newOrg + ".bak"))
+        return false;
+
+    //Get the list of all keys in the source location
+    QStringList keys = source.allKeys();
+
+    //Loop through all keys in the source location
+    //NOTE: Loop may not handle sub-keys correctly w/o modification (though currently there aren't any sub-keys)
+    Q_FOREACH(const QString& key, keys)
+    {
+        //copy every setting in source to sink, even if the key is empty
+        sink.setValue(key, source.value(key));
+    }
+
+    //lastly we need to add the flag which indicates we have performed a migration
+    sink.setValue(APP_SETTINGS_MIGRATED_FLAG, true);
+
+    LogPrintf("APP SETTINGS: Settings successfully migrated from '%s' to '%s'\n", oldOrg.toStdString(), newOrg.toStdString());
+
+    //NOTE: sink will go out of scope upon return so we don't need to manually call sync()
+
+    return true;
 }
 
 #ifndef BITCOIN_QT_TEST
@@ -537,6 +661,9 @@ int main(int argc, char *argv[])
     // Generate high-dpi pixmaps
     QApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
 #endif
+#if QT_VERSION >= 0x050600
+    QGuiApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
+#endif
 #ifdef Q_OS_MAC
     QApplication::setAttribute(Qt::AA_DontShowIconsInMenus);
 #endif
@@ -554,7 +681,14 @@ int main(int argc, char *argv[])
     //   IMPORTANT if it is no longer a typedef use the normal variant above
     qRegisterMetaType< CAmount >("CAmount");
 
-    /// 3. Application identification
+    /// 3. Migrate application settings, if necessary
+    // BU changed the QAPP_ORG_NAME and since this is used for reading the app settings
+    // from the registry (Windows) or a configuration file (Linux/OSX)
+    // we need to check to see if we need to migrate old settings to the new location
+    TryMigrateQtAppSettings("Bitcoin", QAPP_ORG_NAME);
+
+
+    /// 4. Application identification
     // must be set before OptionsModel is initialized or translations are loaded,
     // as it is used to locate QSettings
     QApplication::setOrganizationName(QAPP_ORG_NAME);
@@ -562,7 +696,7 @@ int main(int argc, char *argv[])
     QApplication::setApplicationName(QAPP_APP_NAME_DEFAULT);
     GUIUtil::SubstituteFonts(GetLangTerritory());
 
-    /// 4. Initialization of translations, so that intro dialog is in user's language
+    /// 5. Initialization of translations, so that intro dialog is in user's language
     // Now that QSettings are accessible, initialize translations
     QTranslator qtTranslatorBase, qtTranslator, translatorBase, translator;
     initTranslations(qtTranslatorBase, qtTranslator, translatorBase, translator);
@@ -570,43 +704,46 @@ int main(int argc, char *argv[])
 
     // Show help message immediately after parsing command-line options (for "-lang") and setting locale,
     // but before showing splash screen.
-    if (mapArgs.count("-?") || mapArgs.count("-help") || mapArgs.count("-version"))
+    if (mapArgs.count("-?") || mapArgs.count("-h") || mapArgs.count("-help") || mapArgs.count("-version"))
     {
         HelpMessageDialog help(NULL, mapArgs.count("-version"));
         help.showOrPrint();
-        return 1;
+        return EXIT_SUCCESS;
     }
 
-    /// 5. Now that settings and translations are available, ask user for data directory
+    /// 6. Now that settings and translations are available, ask user for data directory
     // User language is set up: pick a data directory
-    Intro::pickDataDirectory();
+    if (!Intro::pickDataDirectory())
+        return EXIT_FAILURE;
 
-    /// 6. Determine availability of data directory and parse bitcoin.conf
+    /// 7. Determine availability of data directory and parse bitcoin.conf
     /// - Do not call GetDataDir(true) before this step finishes
     if (!boost::filesystem::is_directory(GetDataDir(false)))
     {
-        QMessageBox::critical(0, QObject::tr("Bitcoin Core"),
+        QMessageBox::critical(0, QObject::tr(PACKAGE_NAME),
                               QObject::tr("Error: Specified data directory \"%1\" does not exist.").arg(QString::fromStdString(mapArgs["-datadir"])));
-        return 1;
+        return EXIT_FAILURE;
     }
     try {
         ReadConfigFile(mapArgs, mapMultiArgs);
     } catch (const std::exception& e) {
-        QMessageBox::critical(0, QObject::tr("Bitcoin Core"),
+        QMessageBox::critical(0, QObject::tr(PACKAGE_NAME),
                               QObject::tr("Error: Cannot parse configuration file: %1. Only use key=value syntax.").arg(e.what()));
-        return false;
+        return EXIT_FAILURE;
     }
 
-    /// 7. Determine network (and switch to network specific options)
+    /// 8. Determine network (and switch to network specific options)
     // - Do not call Params() before this step
     // - Do this after parsing the configuration file, as the network can be switched there
     // - QSettings() will use the new application name after this, resulting in network-specific settings
     // - Needs to be done before createOptionsModel
 
     // Check for -testnet or -regtest parameter (Params() calls are only valid after this clause)
-    if (!SelectParamsFromCommandLine()) {
-        QMessageBox::critical(0, QObject::tr("Bitcoin Core"), QObject::tr("Error: Invalid combination of -regtest and -testnet."));
-        return 1;
+    try {
+        SelectParams(ChainNameFromCommandLine());
+    } catch(std::exception &e) {
+        QMessageBox::critical(0, QObject::tr(PACKAGE_NAME), QObject::tr("Error: %1").arg(e.what()));
+        return EXIT_FAILURE;
     }
 #ifdef ENABLE_WALLET
     // Parse URIs on command line -- this can affect Params()
@@ -621,21 +758,21 @@ int main(int argc, char *argv[])
     initTranslations(qtTranslatorBase, qtTranslator, translatorBase, translator);
 
 #ifdef ENABLE_WALLET
-    /// 8. URI IPC sending
+    /// 9. URI IPC sending
     // - Do this early as we don't want to bother initializing if we are just calling IPC
     // - Do this *after* setting up the data directory, as the data directory hash is used in the name
     // of the server.
     // - Do this after creating app and setting up translations, so errors are
     // translated properly.
     if (PaymentServer::ipcSendCommandLine())
-        exit(0);
+        exit(EXIT_SUCCESS);
 
     // Start up the payment server early, too, so impatient users that click on
     // bitcoin: links repeatedly have their payment requests routed to this process:
     app.createPaymentServer();
 #endif
 
-    /// 9. Main GUI initialization
+    /// 10. Main GUI initialization
     // Install global event filter that makes sure that long tooltips can be word-wrapped
     app.installEventFilter(new GUIUtil::ToolTipToRichTextFilter(TOOLTIP_WRAP_THRESHOLD, &app));
 #if QT_VERSION < 0x050000
@@ -649,21 +786,25 @@ int main(int argc, char *argv[])
     // Install qDebug() message handler to route to debug.log
     qInstallMessageHandler(DebugMessageHandler);
 #endif
+    // Allow parameter interaction before we create the options model
+    app.parameterSetup();
     // Load GUI settings from QSettings
-    app.createOptionsModel();
+    app.createOptionsModel(mapArgs.count("-resetguisettings") != 0);
 
     // Subscribe to global signals from core
     uiInterface.InitMessage.connect(InitMessage);
 
-    if (GetBoolArg("-splash", true) && !GetBoolArg("-min", false))
+    if (GetBoolArg("-splash", DEFAULT_SPLASHSCREEN) && !GetBoolArg("-min", false))
         app.createSplashScreen(networkStyle.data());
+
+    UnlimitedSetup();
 
     try
     {
         app.createWindow(networkStyle.data());
         app.requestInitialize();
 #if defined(Q_OS_WIN) && QT_VERSION >= 0x050000
-        WinShutdownMonitor::registerShutdownBlockReason(QObject::tr("Bitcoin Core didn't yet exit safely..."), (HWND)app.getMainWinId());
+        WinShutdownMonitor::registerShutdownBlockReason(QObject::tr("%1 didn't yet exit safely...").arg(QObject::tr(PACKAGE_NAME)), (HWND)app.getMainWinId());
 #endif
         app.exec();
         app.requestShutdown();
@@ -675,6 +816,7 @@ int main(int argc, char *argv[])
         PrintExceptionContinue(NULL, "Runaway exception");
         app.handleRunawayException(QString::fromStdString(strMiscWarning));
     }
+
     return app.getReturnValue();
 }
 #endif // BITCOIN_QT_TEST
