@@ -30,10 +30,10 @@ static const char DB_LAST_BLOCK = 'l';
 
 namespace {
 
-struct CoinsEntry {
+struct CoinEntry {
     COutPoint* outpoint;
     char key;
-    CoinsEntry(const COutPoint* ptr) : outpoint(const_cast<COutPoint*>(ptr)), key(DB_COIN)  {}
+    CoinEntry(const COutPoint* ptr) : outpoint(const_cast<COutPoint*>(ptr)), key(DB_COIN)  {}
 
     template<typename Stream>
     void Serialize(Stream &s) const {
@@ -56,14 +56,14 @@ CCoinsViewDB::CCoinsViewDB(size_t nCacheSize, bool fMemory, bool fWipe) : db(Get
 {
 }
 
-bool CCoinsViewDB::GetCoins(const COutPoint &outpoint, Coin &coin) const {
+bool CCoinsViewDB::GetCoin(const COutPoint &outpoint, Coin &coin) const {
     LOCK(cs_utxo);
-    return db.Read(CoinsEntry(&outpoint), coin);
+    return db.Read(CoinEntry(&outpoint), coin);
 }
 
-bool CCoinsViewDB::HaveCoins(const COutPoint &outpoint) const {
+bool CCoinsViewDB::HaveCoin(const COutPoint &outpoint) const {
     LOCK(cs_utxo);
-    return db.Exists(CoinsEntry(&outpoint));
+    return db.Exists(CoinEntry(&outpoint));
 }
 
 uint256 CCoinsViewDB::GetBestBlock() const {
@@ -89,7 +89,7 @@ bool CCoinsViewDB::BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlock, siz
             size_t nUsage = it->second.coins.DynamicMemoryUsage();
             CoinsEntry entry(&it->first);
 
-            if (it->second.coin.IsPruned())
+            if (it->second.coin.IsSpent())
             {
                 batch.Erase(entry);
 
@@ -198,7 +198,7 @@ bool CCoinsViewDB::GetStats(CCoinsStats &stats) const {
     i->pcursor->Seek(DB_COIN);
     // Cache key of first record
     if (i->pcursor->Valid()) {
-        CoinsEntry entry(&i->keyTmp.second);
+        CoinEntry entry(&i->keyTmp.second);
         i->pcursor->GetKey(entry);
         i->keyTmp.first = entry.key;
     } else {
@@ -235,7 +235,7 @@ bool CCoinsViewDBCursor::Valid() const
 void CCoinsViewDBCursor::Next()
 {
     pcursor->Next();
-    CoinsEntry entry(&keyTmp.second);
+    CoinEntry entry(&keyTmp.second);
     if (!pcursor->Valid() || !pcursor->GetKey(entry)) {
         keyTmp.first = 0; // Invalidate cached key after last record so that Valid() and GetKey() return false
     } else {
