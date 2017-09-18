@@ -87,7 +87,8 @@ public:
 class SaltedOutpointHasher
 {
 private:
-    uint256 salt;
+    /** Salt */
+    const uint64_t k0, k1;
 
 public:
     SaltedOutpointHasher();
