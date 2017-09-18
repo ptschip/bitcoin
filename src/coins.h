@@ -120,6 +120,27 @@ struct CCoinsCacheEntry
 
 typedef std::unordered_map<COutPoint, CCoinsCacheEntry, SaltedOutpointHasher> CCoinsMap;
 
+/** Cursor for iterating over CoinsView state */
+class CCoinsViewCursor
+{
+public:
+    CCoinsViewCursor(const uint256 &hashBlockIn): hashBlock(hashBlockIn) {}
+    virtual ~CCoinsViewCursor() {}
+
+    virtual bool GetKey(COutPoint &key) const = 0;
+    virtual bool GetValue(Coin &coin) const = 0;
+    virtual unsigned int GetValueSize() const = 0;
+
+    virtual bool Valid() const = 0;
+    virtual void Next() = 0;
+
+    //! Get best block at the time this cursor was created
+    const uint256 &GetBestBlock() const { return hashBlock; }
+private:
+    uint256 hashBlock;
+};
+
+/*
 struct CCoinsStats
 {
 public:
@@ -146,6 +167,7 @@ private:
     CCoinsStats() : nHeight(0), nTransactions(0), nTransactionOutputs(0), nSerializedSize(0), nTotalAmount(0) {}
 };
 
+*/
 
 /** Abstract view on the open txout dataset. */
 class CCoinsView
