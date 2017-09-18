@@ -9,6 +9,7 @@
 
 #include "compressor.h"
 #include "core_memusage.h"
+#include "hash.h"
 #include "memusage.h"
 #include "serialize.h"
 #include "uint256.h"
@@ -16,9 +17,9 @@
 
 #include <assert.h>
 #include <stdint.h>
+#include <unordered_map>
 
 #include <boost/foreach.hpp>
-#include <boost/unordered_map.hpp>
 #include <boost/thread/locks.hpp>
 #include <boost/thread/shared_mutex.hpp>
 
