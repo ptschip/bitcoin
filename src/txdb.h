@@ -44,11 +44,11 @@ public:
     bool HaveCoin(const COutPoint &outpoint) const override;
     uint256 GetBestBlock() const override;
     bool BatchWrite(CCoinsMap &mapCoins, const uint256 &hashBlock, size_t &nChildCachedCoinsUsage) override;
-    CCoinsViewCursor *Cursor() const override;
+    CCoinsViewCursor *Cursor() const;
 
     //! Attempt to update from an older database format. Returns whether an error occurred.
     bool Upgrade();
-    size_t EstimateSize() const override;
+    size_t EstimateSize() const;
 };
 
 /** Specialization of CCoinsViewCursor to iterate over a CCoinsViewDB */
@@ -71,7 +71,6 @@ private:
     std::pair<char, COutPoint> keyTmp;
 
     friend class CCoinsViewDB;
->>>>>>> 5083079... Switch CCoinsView and chainstate db from per-txid to per-txout
 };
 
 /** Access to the block database (blocks/index/) */

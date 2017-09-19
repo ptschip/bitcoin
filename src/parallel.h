@@ -28,18 +28,18 @@ class CScriptCheck
 protected:
     ValidationResourceTracker *resourceTracker;
     CScript scriptPubKey;
+    CAmount amount;
     const CTransaction *ptxTo;
     unsigned int nIn;
     unsigned int nFlags;
     bool cacheStore;
     ScriptError error;
-    CAmount amount;
 
 public:
     unsigned char sighashType;
     CScriptCheck()
-        : resourceTracker(NULL), ptxTo(0), nIn(0), nFlags(0), cacheStore(false), error(SCRIPT_ERR_UNKNOWN_ERROR),
-          amount(0), sighashType(0)
+        : resourceTracker(NULL), scriptPubKey(0), amount(0), ptxTo(0), nIn(0), nFlags(0), cacheStore(false), error(SCRIPT_ERR_UNKNOWN_ERROR),
+           sighashType(0)
     {
     }
 

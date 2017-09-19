@@ -241,7 +241,6 @@ void CCoinsViewDBCursor::Next()
     } else {
         keyTmp.first = entry.key;
     }
->>>>>>> 5083079... Switch CCoinsView and chainstate db from per-txid to per-txout
 }
 
 bool CBlockTreeDB::WriteBatchSync(const std::vector<std::pair<int, const CBlockFileInfo*> >& fileInfo, int nLastFile, const std::vector<const CBlockIndex*>& blockinfo) {

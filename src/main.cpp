@@ -987,8 +987,8 @@ bool CheckSequenceLocks(const CTransaction &tx, int flags, LockPoints *lp, bool 
         for (size_t txinIndex = 0; txinIndex < tx.vin.size(); txinIndex++)
         {
             const CTxIn &txin = tx.vin[txinIndex];
-            Coins coin;
-            if (!viewMemPool.GetCoin(txin.prevout.hash, coin))
+            Coin coin;
+            if (!viewMemPool.GetCoin(txin.prevout, coin))
             {
                 return error("%s: Missing input", __func__);
             }
@@ -1289,7 +1289,7 @@ bool AcceptToMemoryPoolWorker(CTxMemPool &pool,
         bool fSpendsCoinbase = false;
         BOOST_FOREACH (const CTxIn &txin, tx.vin)
         {
-            const Coins &coin = view.AccessCoin(txin.prevout);
+            const Coin &coin = view.AccessCoin(txin.prevout);
             if (coin.IsCoinBase())
             {
                 fSpendsCoinbase = true;
@@ -5436,7 +5436,7 @@ bool AlreadyHave(const CInv &inv) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
             }
         }
         bool rrc = recentRejects ? recentRejects->contains(inv.hash) : false;
-        return rrc || mempool.exists(inv.hash) || AlreadyHaveOrphan(inv.hash) || pcoinsTip->HaveCoins(inv.hash);
+        return rrc || mempool.exists(inv.hash) || AlreadyHaveOrphan(inv.hash);
     }
     case MSG_BLOCK:
     case MSG_XTHINBLOCK:
