@@ -1939,8 +1939,8 @@ bool CheckInputs(const CTransaction &tx,
                 // a sanity check that our caching is not introducing consensus
                 // failures through additional data in, eg, the coins being
                 // spent being checked as a part of CScriptCheck.
-                const CScript& scriptPubKey = coin.vout[prevout.n].scriptPubKey;
-                const CAmount amount = coin.vout[prevout.n].nValue;
+                const CScript& scriptPubKey = coin.out.scriptPubKey;
+                const CAmount amount = coin.out.nValue;
 
                 // Verify signature
                 CScriptCheck check(resourceTracker, scriptPubKey, amount, tx, i, flags, cacheStore);
