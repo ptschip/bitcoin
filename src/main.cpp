@@ -2153,7 +2153,7 @@ bool DisconnectBlock(const CBlock &block,
             for (unsigned int j = tx.vin.size(); j-- > 0;)
             {
                 const COutPoint &out = tx.vin[j].prevout;
-                if (!ApplyTxInUndo(std::move(tx.vin[j].prevout), view, out))
+                if (!ApplyTxInUndo(std::move(txundo.vprevout[j]), view, out))
                     fClean = false;
             }
         }
@@ -2413,11 +2413,11 @@ bool ConnectBlock(const CBlock &block,
 
         if (fEnforceBIP30)
         {
-            for (const auto& tx : block.vtx)
+            for (const auto &tx : block.vtx)
             {
-                for (size_t o = 0; o < tx->vout.size(); o++)
+                for (size_t o = 0; o < tx.vout.size(); o++)
                 {
-                    if (view.HaveCoin(COutPoint(tx->GetHash(), o)))
+                    if (view.HaveCoin(COutPoint(tx.GetHash(), o)))
                     {
                         return state.DoS(100, error("ConnectBlock(): tried to overwrite transaction"),
                                          REJECT_INVALID, "bad-txns-BIP30");
