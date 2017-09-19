@@ -447,6 +447,24 @@ public:
     }
 };
 
+class CCompactSize
+{
+protected:
+    uint64_t &n;
+public:
+    explicit CCompactSize(uint64_t& nIn) : n(nIn) { }
+
+    template<typename Stream>
+    void Serialize(Stream &s) const {
+        WriteCompactSize<Stream>(s, n);
+    }
+
+    template<typename Stream>
+    void Unserialize(Stream& s) {
+        n = ReadCompactSize<Stream>(s);
+    }
+};
+
 template<size_t Limit>
 class LimitedString
 {
