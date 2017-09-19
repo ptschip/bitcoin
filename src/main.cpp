@@ -1810,23 +1810,14 @@ void UpdateCoins(const CTransaction &tx, CValidationState &state, CCoinsViewCach
     if (!tx.IsCoinBase())
     {
         txundo.vprevout.reserve(tx.vin.size());
-        BOOST_FOREACH (const CTxIn &txin, tx.vin)
+        for (const CTxIn &txin : tx.vin)
         {
             txundo.vprevout.emplace_back();
             inputs.SpendCoin(txin.prevout, &txundo.vprevout.back());
         }
-        // add outputs
-        AddCoins(inputs, tx, nHeight);
     }
-    else
-    {
-        // add outputs for coinbase tx
-        // In this case call the full ModifyCoins which will do a database
-        // lookup to be sure the coins do not already exist otherwise we do not
-        // know whether to mark them fresh or not.  We want the duplicate coinbases
-        // before BIP30 to still be properly overwritten.
-        inputs.ModifyCoins(tx.GetHash())->FromTx(tx, nHeight);
-    }
+    // add outputs
+    AddCoins(inputs, tx, nHeight);
 }
 
 void UpdateCoins(const CTransaction &tx, CValidationState &state, CCoinsViewCache &inputs, int nHeight)
@@ -1889,7 +1880,7 @@ bool CheckTxInputs(const CTransaction &tx, CValidationState &state, const CCoins
         }
 
         // Check for negative or overflow input values
-        nValueIn += coins.out.nValue;
+        nValueIn += coin.out.nValue;
         if (!MoneyRange(coin.out.nValue) || !MoneyRange(nValueIn))
             return state.DoS(100, false, REJECT_INVALID, "bad-txns-inputvalues-outofrange");
     }
@@ -1948,8 +1939,8 @@ bool CheckInputs(const CTransaction &tx,
                 // a sanity check that our caching is not introducing consensus
                 // failures through additional data in, eg, the coins being
                 // spent being checked as a part of CScriptCheck.
-                const CScript& scriptPubKey = coins->vout[prevout.n].scriptPubKey;
-                const CAmount amount = coins->vout[prevout.n].nValue;
+                const CScript& scriptPubKey = coin.vout[prevout.n].scriptPubKey;
+                const CAmount amount = coin.vout[prevout.n].nValue;
 
                 // Verify signature
                 CScriptCheck check(resourceTracker, scriptPubKey, amount, tx, i, flags, cacheStore);
