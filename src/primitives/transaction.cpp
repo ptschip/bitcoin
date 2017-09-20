@@ -7,7 +7,7 @@
 #include "primitives/transaction.h"
 
 #include "hash.h"
-//#include "tinyformat.h"
+#include "tinyformat.h"
 #include "utilstrencodings.h"
 
 std::string COutPoint::ToString() const

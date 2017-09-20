@@ -9,6 +9,7 @@
 
 #include "coins.h"
 #include "dbwrapper.h"
+#include "chain.h"
 
 #include <map>
 #include <string>
@@ -18,7 +19,6 @@
 
 class CBlockFileInfo;
 class CBlockIndex;
-struct CDiskTxPos;
 class uint256;
 
 //! -dbcache default (MiB)
