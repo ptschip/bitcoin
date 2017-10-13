@@ -2610,7 +2610,7 @@ bool ConnectBlock(const CBlock &block,
                     } /* We don't want to hold the lock while inputs are being checked or we'll slow down the competing
                          thread, if there is one */
 
-                    if ((inOrphanCache) || (!inVerifiedCache && !inOrphanCache))
+                    if ((!fJustCheck) && ((inOrphanCache) || (!inVerifiedCache && !inOrphanCache)))
                     {
                         LogPrint("parallel_2", "checking inputs for tx: %d\n", i);
                         if (inOrphanCache)
