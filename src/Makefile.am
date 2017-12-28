@@ -192,7 +192,6 @@ libbitcoin_server_a_SOURCES = \
   buip055fork.cpp \
   chain.cpp \
   checkpoints.cpp \
-  config.cpp \
   connmgr.cpp \
   dosman.cpp \
   expedited.cpp \
@@ -322,8 +321,6 @@ libbitcoin_common_a_SOURCES = \
   cashaddr.cpp \
   cashaddrenc.cpp \
   chainparams.cpp \
-  dstencode.cpp \
-  config.cpp \
   coins.cpp \
   compressor.cpp \
   core_read.cpp \
@@ -351,6 +348,8 @@ libbitcoin_util_a_SOURCES = \
   compat/glibc_sanity.cpp \
   compat/glibcxx_sanity.cpp \
   compat/strnlen.cpp \
+  config.cpp \
+  dstencode.cpp \
   fs.cpp \
   random.cpp \
   rpc/protocol.cpp \
