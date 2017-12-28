@@ -323,8 +323,10 @@ libbitcoin_common_a_SOURCES = \
   chainparams.cpp \
   coins.cpp \
   compressor.cpp \
+  config.cpp \
   core_read.cpp \
   core_write.cpp \
+  dstencode.cpp \
   key.cpp \
   keystore.cpp \
   netaddress.cpp \
@@ -348,8 +350,6 @@ libbitcoin_util_a_SOURCES = \
   compat/glibc_sanity.cpp \
   compat/glibcxx_sanity.cpp \
   compat/strnlen.cpp \
-  config.cpp \
-  dstencode.cpp \
   fs.cpp \
   random.cpp \
   rpc/protocol.cpp \
