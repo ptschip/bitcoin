@@ -1777,20 +1777,6 @@ void ThreadOpenConnections()
                     nDisconnects++;
                 }
             }
-#ifdef BITCOIN_CASH
-            // Disconnect a node that is not BitcoinCash capable if all outbound slots are full and we
-            // have not yet connected to enough BitcoinCash nodes.
-            else if (nOutbound >= nMaxOutConnections && nBitcoinCash <= min(nMinBitcoinCashNodes, nMaxOutConnections) &&
-                     nDisconnects < MAX_DISCONNECTS && IsChainNearlySyncd())
-            {
-                if (ptemp != nullptr)
-                {
-                    ptemp->fDisconnect = true;
-                    fDisconnected = true;
-                    nDisconnects++;
-                }
-            }
-#endif
 
             // In the event that outbound nodes restart or drop off the network over time we need to
             // replenish the number of disconnects allowed once per day.
