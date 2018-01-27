@@ -24,7 +24,7 @@ class uint256;
 //! -dbcache default (MiB)
 static const int64_t nDefaultDbCache = 500;
 //! max. -dbcache in (MiB)
-static const int64_t nMaxDbCache = sizeof(void *) > 4 ? 16384 : 2048;
+static const int64_t nMaxDbCache = sizeof(void *) > 4 ? 16384 : 1433;
 //! min. -dbcache in (MiB)
 static const int64_t nMinDbCache = 4;
 //! max increase in cache size since the last time we did a full flush
