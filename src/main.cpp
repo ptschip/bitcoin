@@ -371,9 +371,11 @@ bool MarkBlockAsReceived(const uint256 &hash)
         LOG(THIN, "BLOCK_DOWNLOAD_WINDOW is %d MAX_BLOCKS_IN_TRANSIT_PER_PEER is %d\n", BLOCK_DOWNLOAD_WINDOW,
             MAX_BLOCKS_IN_TRANSIT_PER_PEER);
 
+        // Only get the thinblock time if we are nearly syncd because there could not be any thinblocks prior.
+        if (IsChainNearlySyncd())
         {
             LOCK(cs_vNodes);
-            BOOST_FOREACH (CNode *pnode, vNodes)
+            for (CNode *pnode : vNodes)
             {
                 if (pnode->mapThinBlocksInFlight.size() > 0)
                 {
@@ -389,6 +391,7 @@ bool MarkBlockAsReceived(const uint256 &hash)
                 }
             }
         }
+
         // BUIP010 Xtreme Thinblocks: end section
         CNodeState *state = State(itInFlight->second.first);
         state->nBlocksInFlightValidHeaders -= itInFlight->second.second->fValidatedHeaders;
