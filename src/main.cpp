@@ -114,7 +114,7 @@ static unsigned int MAX_BLOCKS_IN_TRANSIT_PER_PEER = 1;
  *  Larger windows tolerate larger download speed differences between peer, but increase the potential
  *  degree of disordering of blocks on disk (which make reindexing and in the future perhaps pruning
  *  harder). We'll probably want to make this a per-peer adaptive value at some point. */
-static unsigned int BLOCK_DOWNLOAD_WINDOW = 256;
+static unsigned int BLOCK_DOWNLOAD_WINDOW = 1024;
 
 extern CTweak<unsigned int> maxBlocksInTransitPerPeer; // override the above
 extern CTweak<unsigned int> blockDownloadWindow;
@@ -326,36 +326,36 @@ bool MarkBlockAsReceived(const uint256 &hash)
         int64_t now = GetTimeMicros();
         double nResponseTime = (double)(now - getdataTime) / 1000000.0;
 
-        // BU:  calculate avg block response time over last 20 blocks to be used for IBD tuning
+        // calculate avg block response time over last 100 blocks to be used for IBD tuning
         // start at a higher number so that we don't start jamming IBD when we restart a node sync
         static double avgResponseTime = 5;
-        static uint8_t blockRange = 20;
+        static uint8_t blockRange = 100;
         if (avgResponseTime > 0)
             avgResponseTime -= (avgResponseTime / blockRange);
         avgResponseTime += nResponseTime / blockRange;
         if (avgResponseTime < 0.2)
         {
-            MAX_BLOCKS_IN_TRANSIT_PER_PEER = 32;
+            MAX_BLOCKS_IN_TRANSIT_PER_PEER = 96;
         }
         else if (avgResponseTime < 0.5)
         {
-            MAX_BLOCKS_IN_TRANSIT_PER_PEER = 16;
+            MAX_BLOCKS_IN_TRANSIT_PER_PEER = 80;
         }
         else if (avgResponseTime < 0.9)
         {
-            MAX_BLOCKS_IN_TRANSIT_PER_PEER = 8;
+            MAX_BLOCKS_IN_TRANSIT_PER_PEER = 64;
         }
         else if (avgResponseTime < 1.4)
         {
-            MAX_BLOCKS_IN_TRANSIT_PER_PEER = 4;
+            MAX_BLOCKS_IN_TRANSIT_PER_PEER = 48;
         }
         else if (avgResponseTime < 2.0)
         {
-            MAX_BLOCKS_IN_TRANSIT_PER_PEER = 2;
+            MAX_BLOCKS_IN_TRANSIT_PER_PEER = 32;
         }
         else
         {
-            MAX_BLOCKS_IN_TRANSIT_PER_PEER = 1;
+            MAX_BLOCKS_IN_TRANSIT_PER_PEER = 16;
         }
 
         LOG(THIN, "Received block %s in %.2f seconds\n", hash.ToString(), nResponseTime);
@@ -7176,19 +7176,24 @@ bool SendMessages(CNode *pto)
             }
         }
 
+LOCK(cs_main);
+/*
         TRY_LOCK(cs_main, lockMain); // Acquire cs_main for IsInitialBlockDownload() and CNodeState()
         if (!lockMain)
         {
             LOG(NET, "skipping SendMessages to %s, cs_main is locked\n", pto->addr.ToString());
             return true;
         }
+*/
+LOCK(pto->cs_vSend);
+/*
         TRY_LOCK(pto->cs_vSend, lockSend);
         if (!lockSend)
         {
             LOG(NET, "skipping SendMessages to %s, pto->cs_vSend is locked\n", pto->addr.ToString());
             return true;
         }
-
+*/
         // Address refresh broadcast
         int64_t nNow = GetTimeMicros();
         if (!IsInitialBlockDownload() && pto->nNextLocalAddrSend < nNow)
@@ -7518,16 +7523,20 @@ bool SendMessages(CNode *pto)
             std::vector<CBlockIndex *> vToDownload;
             FindNextBlocksToDownload(pto->GetId(), MAX_BLOCKS_IN_TRANSIT_PER_PEER - state.nBlocksInFlight, vToDownload);
             // LOG(REQ, "IBD AskFor %d blocks from peer=%s\n", vToDownload.size(), pto->GetLogName());
+
+            std::vector<CInv> vGetBlocks;
             for (CBlockIndex *pindex : vToDownload)
             {
                 CInv inv(MSG_BLOCK, pindex->GetBlockHash());
                 if (!AlreadyHave(inv))
                 {
-                    requester.AskFor(inv, pto);
+                    vGetBlocks.emplace_back(inv);
                     // LOG(REQ, "AskFor block %s (%d) peer=%s\n", pindex->GetBlockHash().ToString(),
-                    //  pindex->nHeight, pto->GetLogName());
+                    //     pindex->nHeight, pto->GetLogName());
                 }
             }
+            if (!vGetBlocks.empty())
+                requester.AskFor(vGetBlocks, pto);
         }
 
         //
@@ -7555,6 +7564,7 @@ bool SendMessages(CNode *pto)
             }
             pto->mapAskFor.erase(pto->mapAskFor.begin());
         }
+
         if (!vGetData.empty())
             pto->PushMessage(NetMsgType::GETDATA, vGetData);
     }

@@ -82,6 +82,7 @@ bool CCoinsViewDB::BatchWrite(CCoinsMap &mapCoins,
     size_t nBatchSize = 0;
     size_t nBatchWrites = 0;
 
+    int64_t nStartTime = GetTimeMillis();
     for (CCoinsMap::iterator it = mapCoins.begin(); it != mapCoins.end();)
     {
         if (it->second.flags & CCoinsCacheEntry::DIRTY)
@@ -122,7 +123,7 @@ bool CCoinsViewDB::BatchWrite(CCoinsMap &mapCoins,
             // was possible, we instead break up the batches such that the performance gains for writing to
             // leveldb are still realized but the memory spikes are not seen.
             nBatchSize += nUsage;
-            if (nBatchSize > nCoinCacheUsage * 0.01)
+            if (nBatchSize > nCoinCacheUsage * 0.001)
             {
                 db.WriteBatch(batch);
                 batch.Clear();
@@ -138,8 +139,8 @@ bool CCoinsViewDB::BatchWrite(CCoinsMap &mapCoins,
         batch.Write(DB_BEST_BLOCK, hashBlock);
 
     bool ret = db.WriteBatch(batch);
-    LOG(COINDB, "Committing %u changed transactions (out of %u) to coin database with %u batch writes...\n",
-        (unsigned int)changed, (unsigned int)count, (unsigned int)nBatchWrites);
+    LOG(COINDB, "Committing %u changed transactions (out of %u) to coin database with %u batch writes in %d millis...\n",
+        (unsigned int)changed, (unsigned int)count, (unsigned int)nBatchWrites, GetTimeMillis() - nStartTime);
     return ret;
 }
 
