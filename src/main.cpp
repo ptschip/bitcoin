@@ -313,15 +313,15 @@ void FinalizeNode(NodeId nodeid)
     }
 }
 
-// Requires cs_main.
 // Returns a bool indicating whether we requested this block.
-bool MarkBlockAsReceived(const uint256 &hash)
+static bool MarkBlockAsReceived(const uint256 &hash, CNode *pnode)
 {
+    AssertLockHeld(cs_main);
+
     std::map<uint256, std::pair<NodeId, std::list<QueuedBlock>::iterator> >::iterator itInFlight =
         mapBlocksInFlight.find(hash);
     if (itInFlight != mapBlocksInFlight.end())
     {
-        // BUIP010 Xtreme Thinblocks: begin section
         int64_t getdataTime = itInFlight->second.second->nTime;
         int64_t now = GetTimeMicros();
         double nResponseTime = (double)(now - getdataTime) / 1000000.0;
@@ -374,21 +374,13 @@ bool MarkBlockAsReceived(const uint256 &hash)
         // Only get the thinblock time if we are nearly syncd because there could not be any thinblocks prior.
         if (IsChainNearlySyncd())
         {
-            LOCK(cs_vNodes);
-            for (CNode *pnode : vNodes)
+            LOCK(pnode->cs_mapthinblocksinflight);
+            if (pnode->mapThinBlocksInFlight.count(hash))
             {
-                if (pnode->mapThinBlocksInFlight.size() > 0)
-                {
-                    LOCK(pnode->cs_mapthinblocksinflight);
-                    if (pnode->mapThinBlocksInFlight.count(hash))
-                    {
-                        // Only update thinstats if this is actually a thinblock and not a regular block.
-                        // Sometimes we request a thinblock but then revert to requesting a regular block
-                        // as can happen when the thinblock preferential timer is exceeded.
-                        thindata.UpdateResponseTime(nResponseTime);
-                        break;
-                    }
-                }
+                // Only update thinstats if this is actually a thinblock and not a regular block.
+                // Sometimes we request a thinblock but then revert to requesting a regular block
+                // as can happen when the thinblock preferential timer is exceeded.
+                thindata.UpdateResponseTime(nResponseTime);
             }
         }
 
@@ -596,8 +588,6 @@ void MarkBlockAsInFlight(NodeId nodeid,
     // If started then clear the thinblock timer used for preferential downloading
     thindata.ClearThinBlockTimer(hash);
 
-    // BU why mark as received? because this erases it from the inflight list.  Instead we'll check for it
-    // BU removed: MarkBlockAsReceived(hash);
     std::map<uint256, std::pair<NodeId, std::list<QueuedBlock>::iterator> >::iterator itInFlight =
         mapBlocksInFlight.find(hash);
     if (itInFlight == mapBlocksInFlight.end()) // If it hasn't already been marked inflight...
@@ -4156,7 +4146,7 @@ bool ProcessNewBlock(CValidationState &state,
     {
         LOCK(cs_main);
         uint256 hash = pblock->GetHash();
-        bool fRequested = MarkBlockAsReceived(hash);
+        bool fRequested = MarkBlockAsReceived(hash, pfrom);
         fRequested |= fForceProcessing;
         if (!checked)
         {
