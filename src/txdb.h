@@ -31,7 +31,7 @@ static const int64_t nMinDbCache = 4;
 //! % of available memory to leave unused by dbcache if/when we dynamically size the dbcache.
 static const int64_t nDefaultPcntMemUnused = 10;
 //! max increase in cache size since the last time we did a full flush
-static const int64_t nMaxCacheIncreaseSinceLastFlush = 512 * 1000 * 1000;
+static const int64_t nMaxCacheIncreaseSinceLastFlush = 1024 * 1000 * 1000;
 //! Max memory allocated to block tree DB specific cache, if no -txindex (MiB)
 static const int64_t nMaxBlockDBCache = 2;
 //! Max memory allocated to block tree DB specific cache, if -txindex (MiB)
