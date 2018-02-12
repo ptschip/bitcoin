@@ -84,9 +84,9 @@ void CRequestManager::cleanup(OdMap::iterator &itemIt)
     droppedTxns -= (item.outstandingReqs - 1);
     pendingTxns -= 1;
 
-    LOCK(cs_vNodes);
 
     // remove all the source nodes
+    LOCK(cs_vNodes);
     for (CUnknownObj::ObjectSourceList::iterator i = item.availableFrom.begin(); i != item.availableFrom.end(); ++i)
     {
         CNode *node = i->node;
@@ -111,6 +111,35 @@ void CRequestManager::cleanup(OdMap::iterator &itemIt)
         if (sendBlkIter == itemIt)
             ++sendBlkIter;
         mapBlkInfo.erase(itemIt);
+    }
+}
+
+void CRequestManager::cleanupNode(const CNode *pnode)
+{
+    LOCK(cs_objDownloader);
+    for (auto iter : mapBlkInfo)
+    {
+
+        CUnknownObj &item = iter.second;
+        // Because we'll ignore anything deleted from the map, reduce the # of requests in flight by every request we made
+        // for this object
+        inFlight -= item.outstandingReqs;
+        //droppedTxns -= (item.outstandingReqs - 1);
+        //pendingTxns -= 1;
+
+        // remove all the source nodes that match this peer
+        for (CUnknownObj::ObjectSourceList::iterator i = item.availableFrom.begin(); i != item.availableFrom.end(); ++i)
+        {
+            CNode *node = i->node;
+            if (node && node == pnode)
+            {
+                i->clear();
+                LOGA("ReqMgr: %s cleanup - removed ref to %d count %d.\n", item.obj.ToString(), node->GetId(),
+                     node->GetRefCount());
+                LOCK(cs_vNodes);
+                node->Release();
+            }
+        }
     }
 }
 
@@ -167,6 +196,37 @@ void CRequestManager::AskFor(const std::vector<CInv> &objArray, CNode *from, uns
     {
         AskFor(inv, from, priority);
     }
+}
+
+void CRequestManager::AskForDuringIBD(const std::vector<CInv> &objArray, CNode *from, unsigned int priority)
+{
+    // add from this node first so that they get requested first.
+    for (auto &inv : objArray)
+    {
+        AskFor(inv, from, priority);
+    }
+
+    LOCK(cs_vNodes);
+    for (CNode *pnode : vNodes)
+    {
+        if (pnode == from)
+            continue;
+
+        for (auto &inv : objArray)
+        {
+            AskFor(inv, pnode, priority);
+        }
+    }
+}
+
+bool CRequestManager::AlreadyAskedFor(const uint256 &hash)
+{
+    LOCK(cs_objDownloader);
+    OdMap::iterator item = mapBlkInfo.find(hash);
+    if (item != mapBlkInfo.end())
+        return true;
+
+    return false;
 }
 
 // Indicate that we got this object, from and bytes are optional (for node performance tracking)

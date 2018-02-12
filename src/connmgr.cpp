@@ -3,6 +3,7 @@
 // Copyright (c) 2016-2017 The Bitcoin Unlimited developers
 
 #include "connmgr.h"
+#include "requestManager.h"
 #include "expedited.h"
 
 std::unique_ptr<CConnMgr> connmgr(new CConnMgr);
@@ -38,7 +39,6 @@ static void AddNode(std::vector<CNode *> &vNodes, CNode *pNode)
 static bool RemoveNode(std::vector<CNode *> &vNodes, CNode *pNode)
 {
     auto Node = FindNode(vNodes, pNode);
-
     if (Node != vNodes.end())
     {
         pNode->Release();
