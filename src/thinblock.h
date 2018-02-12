@@ -19,6 +19,8 @@
 class CDataStream;
 class CNode;
 
+typedef std::shared_ptr<CNode> CNode_ptr;
+
 class CThinBlock
 {
 public:
@@ -36,7 +38,7 @@ public:
      * @param[in] pFrom        The node the message was from
      * @return True if handling succeeded
      */
-    static bool HandleMessage(CDataStream &vRecv, CNode *pfrom);
+    static bool HandleMessage(CDataStream &vRecv, CNode_ptr pfrom);
 
     ADD_SERIALIZE_METHODS;
 
@@ -49,7 +51,7 @@ public:
     }
 
     CInv GetInv() { return CInv(MSG_BLOCK, header.GetHash()); }
-    bool process(CNode *pfrom, int nSizeThinBlock);
+    bool process(CNode_ptr pfrom, int nSizeThinBlock);
 };
 
 class CXThinBlock
@@ -75,7 +77,7 @@ public:
      *                          Xthin block, and for an incoming Xpedited block its hop count + 1.
      * @return True if handling succeeded
      */
-    static bool HandleMessage(CDataStream &vRecv, CNode *pfrom, std::string strCommand, unsigned nHops);
+    static bool HandleMessage(CDataStream &vRecv, CNode_ptr pfrom, std::string strCommand, unsigned nHops);
 
     ADD_SERIALIZE_METHODS;
 
@@ -87,7 +89,7 @@ public:
         READWRITE(vMissingTx);
     }
     CInv GetInv() { return CInv(MSG_BLOCK, header.GetHash()); }
-    bool process(CNode *pfrom, int nSizeThinbBlock, std::string strCommand);
+    bool process(CNode_ptr pfrom, int nSizeThinbBlock, std::string strCommand);
     bool CheckBlockHeader(const CBlockHeader &block, CValidationState &state);
 };
 
@@ -109,7 +111,7 @@ public:
      * @param[in] pFrom        The node the message was from
      * @return True if handling succeeded
      */
-    static bool HandleMessage(CDataStream &vRecv, CNode *pfrom);
+    static bool HandleMessage(CDataStream &vRecv, CNode_ptr pfrom);
 
     ADD_SERIALIZE_METHODS;
 
@@ -140,7 +142,7 @@ public:
      * @param[in] pFrom        The node the message was from
      * @return True if handling succeeded
      */
-    static bool HandleMessage(CDataStream &vRecv, CNode *pfrom);
+    static bool HandleMessage(CDataStream &vRecv, CNode_ptr pfrom);
     ADD_SERIALIZE_METHODS;
 
     template <typename Stream, typename Operation>
@@ -221,11 +223,11 @@ public:
     bool CheckThinblockTimer(uint256 hash);
     void ClearThinBlockTimer(uint256 hash);
 
-    void ClearThinBlockData(CNode *pfrom);
-    void ClearThinBlockData(CNode *pfrom, uint256 hash);
+    void ClearThinBlockData(CNode_ptr pfrom);
+    void ClearThinBlockData(CNode_ptr pfrom, uint256 hash);
 
-    uint64_t AddThinBlockBytes(uint64_t, CNode *pfrom);
-    void DeleteThinBlockBytes(uint64_t, CNode *pfrom);
+    uint64_t AddThinBlockBytes(uint64_t, CNode_ptr pfrom);
+    void DeleteThinBlockBytes(uint64_t, CNode_ptr pfrom);
     void ResetThinBlockBytes();
     uint64_t GetThinBlockBytes();
 };
@@ -235,18 +237,18 @@ extern CThinBlockData thindata; // Singleton class
 bool HaveConnectThinblockNodes();
 bool HaveThinblockNodes();
 bool IsThinBlocksEnabled();
-bool CanThinBlockBeDownloaded(CNode *pto);
+bool CanThinBlockBeDownloaded(CNode_ptr pto);
 void ConnectToThinBlockNodes();
 void CheckNodeSupportForThinBlocks();
-bool ClearLargestThinBlockAndDisconnect(CNode *pfrom);
-void ClearThinBlockInFlight(CNode *pfrom, uint256 hash);
-void AddThinBlockInFlight(CNode *pfrom, uint256 hash);
-void SendXThinBlock(CBlock &block, CNode *pfrom, const CInv &inv);
-bool IsThinBlockValid(CNode *pfrom, const std::vector<CTransaction> &vMissingTx, const CBlockHeader &header);
+bool ClearLargestThinBlockAndDisconnect(CNode_ptr pfrom);
+void ClearThinBlockInFlight(CNode_ptr pfrom, uint256 hash);
+void AddThinBlockInFlight(CNode_ptr pfrom, uint256 hash);
+void SendXThinBlock(CBlock &block, CNode_ptr pfrom, const CInv &inv);
+bool IsThinBlockValid(CNode_ptr pfrom, const std::vector<CTransaction> &vMissingTx, const CBlockHeader &header);
 void BuildSeededBloomFilter(CBloomFilter &memPoolFilter,
     std::vector<uint256> &vOrphanHashes,
     uint256 hash,
-    CNode *pfrom,
+    CNode_ptr pfrom,
     bool fDeterministic = false);
 
 // Xpress Validation: begin

@@ -52,10 +52,10 @@ public:
      * Increment the misbehaving score for this node.  If the ban threshold is reached, flag the node to be
      * banned.  No locks are needed to call this function.
      *
-     * @param[in] pNode    The node which is misbehaving.  No effect if nullptr.
+     * @param[in] pnode    The node which is misbehaving.  No effect if nullptr.
      * @param[in] howmuch  Incremental misbehaving score for the latest infraction by this node.
      */
-    void Misbehaving(CNode *pNode, int howmuch);
+    void Misbehaving(CNode_ptr pnode, int howmuch);
 
     /**
      * Increment the misbehaving score for this node.  If the ban threshold is reached, flag the node to be

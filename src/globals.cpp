@@ -142,8 +142,8 @@ deque<pair<int64_t, CInv> > vRelayExpiration;
 CCriticalSection cs_mapRelay;
 limitedmap<uint256, int64_t> mapAlreadyAskedFor(MAX_INV_SZ);
 
-vector<CNode *> vNodes;
-list<CNode *> vNodesDisconnected;
+vector<CNode_ptr> vNodes;
+list<CNode_ptr> vNodesDisconnected;
 CSemaphore *semOutbound = NULL;
 CSemaphore *semOutboundAddNode = NULL; // BU: separate semaphore for -addnodes
 CNodeSignals g_signals;

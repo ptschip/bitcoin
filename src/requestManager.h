@@ -44,8 +44,8 @@ class CNodeRequestData
 public:
     int requestCount;
     int desirability;
-    CNode *node;
-    CNodeRequestData(CNode *);
+    CNode_ptr node;
+    CNodeRequestData(CNode_ptr);
 
     CNodeRequestData() : requestCount(0), desirability(0), node(NULL) {}
     void clear(void)
@@ -59,8 +59,8 @@ public:
 
 struct MatchCNodeRequestData // Compare a CNodeRequestData object to a node
 {
-    CNode *node;
-    MatchCNodeRequestData(CNode *n) : node(n){};
+    CNode_ptr node;
+    MatchCNodeRequestData(CNode_ptr n) : node(n){};
     inline bool operator()(const CNodeRequestData &nd) const { return nd.node == node; }
 };
 
@@ -86,7 +86,7 @@ public:
         priority = 0;
     }
 
-    bool AddSource(CNode *from); // returns true if the source did not already exist
+    bool AddSource(CNode_ptr from); // returns true if the source did not already exist
 };
 
 class CRequestManager
@@ -124,33 +124,33 @@ public:
     CRequestManager();
 
     // Get this object from somewhere, asynchronously.
-    void AskFor(const CInv &obj, CNode *from, unsigned int priority = 0);
+    void AskFor(const CInv &obj, CNode_ptr from, unsigned int priority = 0);
 
     // Get these objects from somewhere, asynchronously.
-    void AskFor(const std::vector<CInv> &objArray, CNode *from, unsigned int priority = 0);
+    void AskFor(const std::vector<CInv> &objArray, CNode_ptr from, unsigned int priority = 0);
 
     // Get these objects from somewhere, asynchronously during IBD. During IBD we must assume every peer connected
     // can give us the blocks we need and so we tell the request manager about these sources. Otherwise the request
     // manager may not be able to re-request blocks from anyone after a timeout and we also need to be able to not
     // request another group of blocks that are already in flight.
-    void AskForDuringIBD(const std::vector<CInv> &objArray, CNode *from, unsigned int priority = 0);
+    void AskForDuringIBD(const std::vector<CInv> &objArray, CNode_ptr from, unsigned int priority = 0);
 
     // Did we already ask for this block. We need to do this during IBD to make sure we don't ask for another set
     // of the same blocks.
     bool AlreadyAskedFor(const uint256 &hash);
 
     // Indicate that we got this object, from and bytes are optional (for node performance tracking)
-    void Received(const CInv &obj, CNode *from, int bytes = 0);
+    void Received(const CInv &obj, CNode_ptr from, int bytes = 0);
 
     // Indicate that we previously got this object
     void AlreadyReceived(const CInv &obj);
 
     // Indicate that getting this object was rejected
-    void Rejected(const CInv &obj, CNode *from, unsigned char reason = 0);
+    void Rejected(const CInv &obj, CNode_ptr from, unsigned char reason = 0);
 
     void SendRequests();
 
-    void cleanupNode(const CNode *pnode);
+    void cleanupNode(const CNode_ptr pnode);
 
 };
 

@@ -22,14 +22,14 @@ enum
 
 
 // Checks to see if the node is configured in bitcoin.conf to
-extern bool CheckAndRequestExpeditedBlocks(CNode *pfrom);
+extern bool CheckAndRequestExpeditedBlocks(CNode_ptr pfrom);
 
 // be an expedited block source and if so, request them.
-extern void SendExpeditedBlock(CXThinBlock &thinBlock, unsigned char hops, const CNode *skip = NULL);
-extern void SendExpeditedBlock(const CBlock &block, const CNode *skip = NULL);
-extern bool HandleExpeditedRequest(CDataStream &vRecv, CNode *pfrom);
+extern void SendExpeditedBlock(CXThinBlock &thinBlock, unsigned char hops, const CNode_ptr skip = nullptr);
+extern void SendExpeditedBlock(const CBlock &block, const CNode_ptr skip = nullptr);
+extern bool HandleExpeditedRequest(CDataStream &vRecv, CNode_ptr pfrom);
 
 // process incoming unsolicited block
-extern bool HandleExpeditedBlock(CDataStream &vRecv, CNode *pfrom);
+extern bool HandleExpeditedBlock(CDataStream &vRecv, CNode_ptr pfrom);
 
 #endif

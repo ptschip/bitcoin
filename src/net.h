@@ -42,6 +42,8 @@ class CSubNet;
 class CNode;
 class CNodeRef;
 
+typedef std::shared_ptr<CNode> CNode_ptr;
+
 namespace boost
 {
 class thread_group;
@@ -101,7 +103,7 @@ unsigned int ReceiveFloodSize();
 unsigned int SendBufferSize();
 
 void AddOneShot(const std::string &strDest);
-CNodeRef FindNodeRef(const std::string &addrName);
+CNode_ptr FindNodeRef(const std::string &addrName);
 int DisconnectSubNetNodes(const CSubNet &subNet);
 bool OpenNetworkConnection(const CAddress &addrConnect,
     bool fCountFailure,
@@ -114,7 +116,7 @@ unsigned short GetListenPort();
 bool BindListenPort(const CService &bindAddr, std::string &strError, bool fWhitelisted = false);
 void StartNode(boost::thread_group &threadGroup, CScheduler &scheduler);
 bool StopNode();
-int SocketSendData(CNode *pnode);
+int SocketSendData(CNode_ptr pnode);
 
 // Node IDs are currently signed but only values greater than zero are returned.  Zero or negative can be used as a
 // sentinel value.
@@ -141,9 +143,9 @@ struct CombinerAll
 struct CNodeSignals
 {
     boost::signals2::signal<int()> GetHeight;
-    boost::signals2::signal<bool(CNode *), CombinerAll> ProcessMessages;
-    boost::signals2::signal<bool(CNode *), CombinerAll> SendMessages;
-    boost::signals2::signal<void(NodeId, const CNode *)> InitializeNode;
+    boost::signals2::signal<bool(CNode_ptr), CombinerAll> ProcessMessages;
+    boost::signals2::signal<bool(CNode_ptr), CombinerAll> SendMessages;
+    boost::signals2::signal<void(NodeId, const CNode_ptr)> InitializeNode;
     boost::signals2::signal<void(NodeId)> FinalizeNode;
 };
 
@@ -162,8 +164,8 @@ enum
     LOCAL_MAX
 };
 
-bool IsPeerAddrLocalGood(CNode *pnode);
-void AdvertiseLocal(CNode *pnode);
+bool IsPeerAddrLocalGood(CNode_ptr pnode);
+void AdvertiseLocal(CNode_ptr pnode);
 void SetLimited(enum Network net, bool fLimited = true);
 bool IsLimited(enum Network net);
 bool IsLimited(const CNetAddr &addr);
@@ -188,7 +190,7 @@ extern CAddrMan addrman;
 extern int nMaxConnections;
 /** The minimum number of xthin nodes to connect to */
 extern int nMinXthinNodes;
-extern std::vector<CNode *> vNodes;
+extern std::vector<std::shared_ptr<CNode>> vNodes;
 extern CCriticalSection cs_vNodes;
 extern std::map<CInv, CDataStream> mapRelay;
 extern std::deque<std::pair<int64_t, CInv> > vRelayExpiration;
@@ -491,7 +493,7 @@ public:
     unsigned int GetTotalRecvSize()
     {
         unsigned int total = 0;
-        BOOST_FOREACH (const CNetMessage &msg, vRecvMsg)
+        for (const CNetMessage &msg : vRecvMsg)
             total += msg.vRecv.size() + 24;
         return total;
     }
@@ -503,7 +505,7 @@ public:
     void SetRecvVersion(int nVersionIn)
     {
         nRecvVersion = nVersionIn;
-        BOOST_FOREACH (CNetMessage &msg, vRecvMsg)
+        for (CNetMessage &msg : vRecvMsg)
             msg.SetVersion(nVersionIn);
     }
 
@@ -512,10 +514,10 @@ public:
         return params.CashMessageStart();
     }
 
-    CNode *AddRef()
+    CNode_ptr AddRef()
     {
         nRefCount++;
-        return this;
+        //return this;
     }
 
     void Release() { nRefCount--; }
@@ -843,21 +845,21 @@ class CNodeRef
         if (_pnode)
         {
             // Make the noderef null before releasing, to ensure a user can't get freed memory from us
-            CNode *tmp = _pnode;
+            CNode_ptr tmp = _pnode;
             _pnode = nullptr;
             tmp->Release();
         }
     }
 
 public:
-    CNodeRef(CNode *pnode = nullptr) : _pnode(pnode) { AddRef(); }
+    CNodeRef(CNode_ptr pnode = nullptr) : _pnode(pnode) { AddRef(); }
     CNodeRef(const CNodeRef &other) : _pnode(other._pnode) { AddRef(); }
     ~CNodeRef() { Release(); }
     CNode &operator*() const { return *_pnode; };
-    CNode *operator->() const { return _pnode; };
-    explicit operator bool() const { return _pnode; }
-    CNode *get() const { return _pnode; }
-    CNodeRef &operator=(CNode *pnode)
+    CNode_ptr operator->() const { return _pnode; };
+    //explicit operator bool() const { return _pnode; }
+    CNode_ptr get() const { return _pnode; }
+    CNodeRef &operator=(CNode_ptr pnode)
     {
         if (pnode != _pnode)
         {
@@ -869,7 +871,7 @@ public:
     }
     CNodeRef &operator=(const CNodeRef &other) { return operator=(other._pnode); }
 private:
-    CNode *_pnode;
+    CNode_ptr _pnode;
 };
 
 typedef std::vector<CNodeRef> VNodeRefs;

@@ -57,7 +57,7 @@ UniValue ping(const UniValue &params, bool fHelp)
     // Request that each node send a ping during next message processing pass
     LOCK2(cs_main, cs_vNodes);
 
-    BOOST_FOREACH (CNode *pNode, vNodes)
+    BOOST_FOREACH (CNode_ptr pNode, vNodes)
     {
         pNode->fPingQueued = true;
     }
@@ -71,7 +71,7 @@ static void CopyNodeStats(std::vector<CNodeStats> &vstats)
 
     LOCK(cs_vNodes);
     vstats.reserve(vNodes.size());
-    BOOST_FOREACH (CNode *pnode, vNodes)
+    BOOST_FOREACH (CNode_ptr pnode, vNodes)
     {
         CNodeStats stats;
         pnode->copyStats(stats);
@@ -127,18 +127,18 @@ UniValue getpeerinfo(const UniValue &params, bool fHelp)
     CopyNodeStats(vstats);
 
     UniValue ret(UniValue::VARR);
-    CNodeRef node;
+    CNode_ptr node;
     if (params.size() > 0) // BU allow params to this RPC call
     {
         string nodeName = params[0].get_str();
         node = FindLikelyNode(nodeName);
-        if (!node)
+        if (node == nullptr)
             throw runtime_error("Unknown node");
     }
 
-    BOOST_FOREACH (const CNodeStats &stats, vstats)
+    for (const CNodeStats &stats : vstats)
     {
-        if (!node || (node->id == stats.nodeid))
+        if (node != nullptr || (node->id == stats.nodeid))
         {
             UniValue obj(UniValue::VOBJ);
             CNodeStateStats statestats;
@@ -248,8 +248,8 @@ UniValue disconnectnode(const UniValue &params, bool fHelp)
                             HelpExampleCli("disconnectnode", "\"192.168.0.6:8333\"") +
                             HelpExampleRpc("disconnectnode", "\"192.168.0.6:8333\""));
 
-    CNodeRef node = FindNodeRef(params[0].get_str());
-    if (!node)
+    CNode_ptr node = FindNodeRef(params[0].get_str());
+    if (node == nullptr)
         throw JSONRPCError(RPC_CLIENT_NODE_NOT_CONNECTED, "Node not found in connected nodes");
 
     node->fDisconnect = true;
@@ -356,7 +356,7 @@ UniValue getaddednodeinfo(const UniValue &params, bool fHelp)
             bool fFound = false;
             UniValue node(UniValue::VOBJ);
             node.push_back(Pair("address", addrNode.ToString()));
-            BOOST_FOREACH (CNode *pnode, vNodes)
+            BOOST_FOREACH (CNode_ptr pnode, vNodes)
             {
                 if (pnode->addr == addrNode)
                 {

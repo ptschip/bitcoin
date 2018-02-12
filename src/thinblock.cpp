@@ -26,7 +26,7 @@
 
 using namespace std;
 
-static bool ReconstructBlock(CNode *pfrom, const bool fXVal, int &missingCount, int &unnecessaryCount);
+static bool ReconstructBlock(CNode_ptr pfrom, const bool fXVal, int &missingCount, int &unnecessaryCount);
 
 CThinBlock::CThinBlock(const CBlock &block, CBloomFilter &filter)
 {
@@ -52,7 +52,7 @@ CThinBlock::CThinBlock(const CBlock &block, CBloomFilter &filter)
  * Handle an incoming thin block.  The block is fully validated, and if any transactions are missing, we fall
  * back to requesting a full block.
  */
-bool CThinBlock::HandleMessage(CDataStream &vRecv, CNode *pfrom)
+bool CThinBlock::HandleMessage(CDataStream &vRecv, CNode_ptr pfrom)
 {
     if (!pfrom->ThinBlockCapable())
     {
@@ -125,7 +125,7 @@ bool CThinBlock::HandleMessage(CDataStream &vRecv, CNode *pfrom)
     return thinBlock.process(pfrom, nSizeThinBlock);
 }
 
-bool CThinBlock::process(CNode *pfrom, int nSizeThinBlock)
+bool CThinBlock::process(CNode_ptr pfrom, int nSizeThinBlock)
 {
     // Xpress Validation - only perform xval if the chaintip matches the last blockhash in the thinblock
     bool fXVal;
@@ -285,7 +285,7 @@ CXThinBlockTx::CXThinBlockTx(uint256 blockHash, vector<CTransaction> &vTx)
     vMissingTx = vTx;
 }
 
-bool CXThinBlockTx::HandleMessage(CDataStream &vRecv, CNode *pfrom)
+bool CXThinBlockTx::HandleMessage(CDataStream &vRecv, CNode_ptr pfrom)
 {
     if (!pfrom->ThinBlockCapable())
     {
@@ -439,7 +439,7 @@ CXRequestThinBlockTx::CXRequestThinBlockTx(uint256 blockHash, set<uint64_t> &set
     setCheapHashesToRequest = setHashesToRequest;
 }
 
-bool CXRequestThinBlockTx::HandleMessage(CDataStream &vRecv, CNode *pfrom)
+bool CXRequestThinBlockTx::HandleMessage(CDataStream &vRecv, CNode_ptr pfrom)
 {
     if (!pfrom->ThinBlockCapable())
     {
@@ -536,7 +536,7 @@ bool CXThinBlock::CheckBlockHeader(const CBlockHeader &block, CValidationState &
  * Handle an incoming Xthin or Xpedited block
  * Once the block is validated apart from the Merkle root, forward the Xpedited block with a hop count of nHops.
  */
-bool CXThinBlock::HandleMessage(CDataStream &vRecv, CNode *pfrom, string strCommand, unsigned nHops)
+bool CXThinBlock::HandleMessage(CDataStream &vRecv, CNode_ptr pfrom, string strCommand, unsigned nHops)
 {
     if (!pfrom->ThinBlockCapable())
     {
@@ -658,7 +658,7 @@ bool CXThinBlock::HandleMessage(CDataStream &vRecv, CNode *pfrom, string strComm
     return thinBlock.process(pfrom, nSizeThinBlock, strCommand);
 }
 
-bool CXThinBlock::process(CNode *pfrom,
+bool CXThinBlock::process(CNode_ptr pfrom,
     int nSizeThinBlock,
     string strCommand) // TODO: request from the "best" txn source not necessarily from the block source
 {
@@ -851,7 +851,7 @@ bool CXThinBlock::process(CNode *pfrom,
     return true;
 }
 
-static bool ReconstructBlock(CNode *pfrom, const bool fXVal, int &missingCount, int &unnecessaryCount)
+static bool ReconstructBlock(CNode_ptr pfrom, const bool fXVal, int &missingCount, int &unnecessaryCount)
 {
     AssertLockHeld(cs_xval);
     uint64_t maxAllowedSize = maxMessageSizeMultiplier * excessiveBlockSize;
@@ -1292,7 +1292,7 @@ void CThinBlockData::ClearThinBlockTimer(uint256 hash)
 
 // After a thinblock is finished processing or if for some reason we have to pre-empt the rebuilding
 // of a thinblock then we clear out the thinblock data which can be substantial.
-void CThinBlockData::ClearThinBlockData(CNode *pnode)
+void CThinBlockData::ClearThinBlockData(CNode_ptr pnode)
 {
     // Remove bytes from counter
     thindata.DeleteThinBlockBytes(pnode->nLocalThinBlockBytes, pnode);
@@ -1309,13 +1309,13 @@ void CThinBlockData::ClearThinBlockData(CNode *pnode)
         thindata.GetThinBlockBytes());
 }
 
-void CThinBlockData::ClearThinBlockData(CNode *pnode, uint256 hash)
+void CThinBlockData::ClearThinBlockData(CNode_ptr pnode, uint256 hash)
 {
     // We must make sure to clear the thinblock data first before clearing the thinblock in flight.
     ClearThinBlockData(pnode);
     ClearThinBlockInFlight(pnode, hash);
 }
-uint64_t CThinBlockData::AddThinBlockBytes(uint64_t bytes, CNode *pfrom)
+uint64_t CThinBlockData::AddThinBlockBytes(uint64_t bytes, CNode_ptr pfrom)
 {
     pfrom->nLocalThinBlockBytes += bytes;
     uint64_t ret = nThinBlockBytes.fetch_add(bytes) + bytes;
@@ -1323,7 +1323,7 @@ uint64_t CThinBlockData::AddThinBlockBytes(uint64_t bytes, CNode *pfrom)
     return ret;
 }
 
-void CThinBlockData::DeleteThinBlockBytes(uint64_t bytes, CNode *pfrom)
+void CThinBlockData::DeleteThinBlockBytes(uint64_t bytes, CNode_ptr pfrom)
 {
     if (bytes <= pfrom->nLocalThinBlockBytes)
         pfrom->nLocalThinBlockBytes -= bytes;
@@ -1342,7 +1342,7 @@ bool HaveConnectThinblockNodes()
     vector<string> vNodesIP;
     {
         LOCK(cs_vNodes);
-        BOOST_FOREACH (CNode *pnode, vNodes)
+        BOOST_FOREACH (CNode_ptr pnode, vNodes)
         {
             int pos = pnode->addrName.rfind(":");
             if (pos <= 0)
@@ -1394,7 +1394,7 @@ bool HaveThinblockNodes()
 {
     {
         LOCK(cs_vNodes);
-        BOOST_FOREACH (CNode *pnode, vNodes)
+        BOOST_FOREACH (CNode_ptr pnode, vNodes)
             if (pnode->ThinBlockCapable())
                 return true;
     }
@@ -1402,7 +1402,7 @@ bool HaveThinblockNodes()
 }
 
 bool IsThinBlocksEnabled() { return GetBoolArg("-use-thinblocks", true); }
-bool CanThinBlockBeDownloaded(CNode *pto)
+bool CanThinBlockBeDownloaded(CNode_ptr pto)
 {
     if (pto->ThinBlockCapable() && !GetBoolArg("-connect-thinblock-force", false))
         return true;
@@ -1446,10 +1446,10 @@ void CheckNodeSupportForThinBlocks()
     if (IsThinBlocksEnabled())
     {
         // Check that a nodes pointed to with connect-thinblock actually supports thinblocks
-        BOOST_FOREACH (string &strAddr, mapMultiArgs["-connect-thinblock"])
+        for (string &strAddr : mapMultiArgs["-connect-thinblock"])
         {
-            CNodeRef node = FindNodeRef(strAddr);
-            if (node && !node->ThinBlockCapable())
+            CNode_ptr node = FindNodeRef(strAddr);
+            if (node != nullptr && !node->ThinBlockCapable())
             {
                 LOGA("ERROR: You are trying to use connect-thinblocks but to a node that does not support it "
                      "- Protocol Version: %d peer=%s\n",
@@ -1459,11 +1459,11 @@ void CheckNodeSupportForThinBlocks()
     }
 }
 
-bool ClearLargestThinBlockAndDisconnect(CNode *pfrom)
+bool ClearLargestThinBlockAndDisconnect(CNode_ptr pfrom)
 {
-    CNode *pLargest = NULL;
+    CNode_ptr pLargest = NULL;
     LOCK(cs_vNodes);
-    BOOST_FOREACH (CNode *pnode, vNodes)
+    BOOST_FOREACH (CNode_ptr pnode, vNodes)
     {
         if ((pLargest == NULL) || (pnode->nLocalThinBlockBytes > pLargest->nLocalThinBlockBytes))
             pLargest = pnode;
@@ -1482,20 +1482,20 @@ bool ClearLargestThinBlockAndDisconnect(CNode *pfrom)
     return false;
 }
 
-void ClearThinBlockInFlight(CNode *pfrom, uint256 hash)
+void ClearThinBlockInFlight(CNode_ptr pfrom, uint256 hash)
 {
     LOCK(pfrom->cs_mapthinblocksinflight);
     pfrom->mapThinBlocksInFlight.erase(hash);
 }
 
-void AddThinBlockInFlight(CNode *pfrom, uint256 hash)
+void AddThinBlockInFlight(CNode_ptr pfrom, uint256 hash)
 {
     LOCK(pfrom->cs_mapthinblocksinflight);
     pfrom->mapThinBlocksInFlight.insert(
         std::pair<uint256, CNode::CThinBlockInFlight>(hash, CNode::CThinBlockInFlight()));
 }
 
-void SendXThinBlock(CBlock &block, CNode *pfrom, const CInv &inv)
+void SendXThinBlock(CBlock &block, CNode_ptr pfrom, const CInv &inv)
 {
     if (inv.type == MSG_XTHINBLOCK)
     {
@@ -1576,7 +1576,7 @@ void SendXThinBlock(CBlock &block, CNode *pfrom, const CInv &inv)
     pfrom->blocksSent += 1;
 }
 
-bool IsThinBlockValid(CNode *pfrom, const std::vector<CTransaction> &vMissingTx, const CBlockHeader &header)
+bool IsThinBlockValid(CNode_ptr pfrom, const std::vector<CTransaction> &vMissingTx, const CBlockHeader &header)
 {
     // Check that that there is at least one txn in the xthin and that the first txn is the coinbase
     if (vMissingTx.empty())
@@ -1609,7 +1609,7 @@ bool IsThinBlockValid(CNode *pfrom, const std::vector<CTransaction> &vMissingTx,
 void BuildSeededBloomFilter(CBloomFilter &filterMemPool,
     vector<uint256> &vOrphanHashes,
     uint256 hash,
-    CNode *pfrom,
+    CNode_ptr pfrom,
     bool fDeterministic)
 {
     int64_t nStartTimer = GetTimeMillis();

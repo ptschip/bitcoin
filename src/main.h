@@ -253,7 +253,7 @@ void UnregisterNodeSignals(CNodeSignals &nodeSignals);
  */
 bool ProcessNewBlock(CValidationState &state,
     const CChainParams &chainparams,
-    CNode *pfrom,
+    CNode_ptr pfrom,
     const CBlock *pblock,
     bool fForceProcessing,
     CDiskBlockPos *dbp,
@@ -277,7 +277,7 @@ bool LoadBlockIndex();
 /** Unload database information */
 void UnloadBlockIndex();
 /** Process protocol messages received from a given node */
-bool ProcessMessages(CNode *pfrom);
+bool ProcessMessages(CNode_ptr pfrom);
 bool AlreadyHave(const CInv &);
 bool AcceptBlockHeader(const CBlockHeader &block,
     CValidationState &state,
@@ -285,14 +285,14 @@ bool AcceptBlockHeader(const CBlockHeader &block,
     CBlockIndex **ppindex = NULL);
 
 /** Process a single protocol messages received from a given node */
-bool ProcessMessage(CNode *pfrom, std::string strCommand, CDataStream &vRecv, int64_t nTimeReceived);
+bool ProcessMessage(CNode_ptr pfrom, std::string strCommand, CDataStream &vRecv, int64_t nTimeReceived);
 
 /**
  * Send queued protocol messages to be sent to a give node.
  *
  * @param[in]   pto             The node which we are sending messages to.
  */
-bool SendMessages(CNode *pto);
+bool SendMessages(CNode_ptr pto);
 // BU: moves to parallel.h
 /** Run an instance of the script checking thread */
 // void ThreadScriptCheck();

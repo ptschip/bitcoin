@@ -260,20 +260,20 @@ bool CDoSManager::BannedSetIsDirty()
  * Increment the misbehaving count score for this node.  If the ban threshold is reached, flag the node to be
  * banned.  No locks are needed to call this function.
  */
-void CDoSManager::Misbehaving(CNode *pNode, int howmuch)
+void CDoSManager::Misbehaving(CNode_ptr pnode, int howmuch)
 {
-    if (howmuch == 0 || !pNode)
+    if (howmuch == 0 || !pnode)
         return;
 
-    int prior(pNode->nMisbehavior.fetch_add(howmuch));
+    int prior(pnode->nMisbehavior.fetch_add(howmuch));
 
     if (prior + howmuch >= nBanThreshold && prior < nBanThreshold)
     {
-        LOGA("%s: %s (%d -> %d) BAN THRESHOLD EXCEEDED\n", __func__, pNode->GetLogName(), prior, prior + howmuch);
-        pNode->fShouldBan = true;
+        LOGA("%s: %s (%d -> %d) BAN THRESHOLD EXCEEDED\n", __func__, pnode->GetLogName(), prior, prior + howmuch);
+        pnode->fShouldBan = true;
     }
     else
-        LOGA("%s: %s (%d -> %d)\n", __func__, pNode->GetLogName(), prior, prior + howmuch);
+        LOGA("%s: %s (%d -> %d)\n", __func__, pnode->GetLogName(), prior, prior + howmuch);
 }
 
 /**

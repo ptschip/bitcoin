@@ -117,7 +117,7 @@ public:
 
     /* Initialize mapBlockValidationThreads*/
     void InitThread(const boost::thread::id this_id,
-        const CNode *pfrom,
+        const CNode_ptr pfrom,
         std::shared_ptr<CBlock> block,
         const CInv &inv,
         uint64_t blockSize);
@@ -172,7 +172,7 @@ public:
     void ClearOrphanCache(const CBlock &block);
 
     /* Process a block message */
-    void HandleBlockMessage(CNode *pfrom,
+    void HandleBlockMessage(CNode_ptr pfrom,
         const std::string &strCommand,
         std::shared_ptr<CBlock> block,
         const CInv &inv,

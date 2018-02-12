@@ -259,7 +259,7 @@ int GetHeight()
     return chainActive.Height();
 }
 
-void UpdatePreferredDownload(CNode *node, CNodeState *state)
+void UpdatePreferredDownload(CNode_ptr node, CNodeState *state)
 {
     nPreferredDownload -= state->fPreferredDownload;
 
@@ -275,7 +275,7 @@ void UpdatePreferredDownload(CNode *node, CNodeState *state)
     nPreferredDownload += state->fPreferredDownload;
 }
 
-void InitializeNode(NodeId nodeid, const CNode *pnode)
+void InitializeNode(NodeId nodeid, const CNode_ptr pnode)
 {
     LOCK(cs_main);
     CNodeState &state = mapNodeState.insert(std::make_pair(nodeid, CNodeState())).first->second;
@@ -311,7 +311,7 @@ void FinalizeNode(NodeId nodeid)
 }
 
 // Returns a bool indicating whether we requested this block.
-static bool MarkBlockAsReceived(const uint256 &hash, CNode *pnode)
+static bool MarkBlockAsReceived(const uint256 &hash, CNode_ptr pnode)
 {
     AssertLockHeld(cs_main);
 
@@ -636,8 +636,8 @@ bool CanDirectFetch(const Consensus::Params &consensusParams)
 
 bool GetNodeStateStats(NodeId nodeid, CNodeStateStats &stats)
 {
-    CNodeRef node(connmgr->FindNodeFromId(nodeid));
-    if (!node)
+    CNode_ptr node(connmgr->FindNodeFromId(nodeid));
+    if (node == nullptr)
         return false;
 
     LOCK(cs_main);
@@ -1646,15 +1646,15 @@ void static InvalidBlockFound(CBlockIndex *pindex, const CValidationState &state
         std::map<uint256, NodeId>::iterator it = mapBlockSource.find(pindex->GetBlockHash());
         if (it != mapBlockSource.end())
         {
-            CNodeRef node(connmgr->FindNodeFromId(it->second));
+            CNode_ptr node(connmgr->FindNodeFromId(it->second));
 
-            if (node)
+            if (node != nullptr)
             {
                 node->PushMessage(NetMsgType::REJECT, (std::string)NetMsgType::BLOCK,
                     (unsigned char)state.GetRejectCode(), state.GetRejectReason().substr(0, MAX_REJECT_MESSAGE_LENGTH),
                     pindex->GetBlockHash());
                 if (nDoS > 0)
-                    dosMan.Misbehaving(node.get(), nDoS);
+                    dosMan.Misbehaving(node, nDoS);
             }
         }
     }
@@ -3317,7 +3317,7 @@ static bool ActivateBestChainStep(CValidationState &state,
                 nBlockEstimate = Checkpoints::GetTotalBlocksEstimate(chainparams.Checkpoints());
             {
                 LOCK(cs_vNodes);
-                BOOST_FOREACH (CNode *pnode, vNodes)
+                BOOST_FOREACH (CNode_ptr pnode, vNodes)
                 {
                     if (chainActive.Height() >
                         (pnode->nStartingHeight != -1 ? pnode->nStartingHeight - 2000 : nBlockEstimate))
@@ -4131,7 +4131,7 @@ static bool IsSuperMajority(int minVersion,
 
 bool ProcessNewBlock(CValidationState &state,
     const CChainParams &chainparams,
-    CNode *pfrom,
+    CNode_ptr pfrom,
     const CBlock *pblock,
     bool fForceProcessing,
     CDiskBlockPos *dbp,
@@ -5303,7 +5303,7 @@ bool AlreadyHave(const CInv &inv) EXCLUSIVE_LOCKS_REQUIRED(cs_main)
     return true;
 }
 
-void static ProcessGetData(CNode *pfrom, const Consensus::Params &consensusParams)
+void static ProcessGetData(CNode_ptr pfrom, const Consensus::Params &consensusParams)
 {
     std::deque<CInv>::iterator it = pfrom->vRecvGetData.begin();
 
@@ -5518,7 +5518,7 @@ void static ProcessGetData(CNode *pfrom, const Consensus::Params &consensusParam
     }
 }
 
-bool ProcessMessage(CNode *pfrom, std::string strCommand, CDataStream &vRecv, int64_t nTimeReceived)
+bool ProcessMessage(CNode_ptr pfrom, std::string strCommand, CDataStream &vRecv, int64_t nTimeReceived)
 {
     int64_t receiptTime = GetTime();
     const CChainParams &chainparams = Params();
@@ -5786,7 +5786,7 @@ bool ProcessMessage(CNode *pfrom, std::string strCommand, CDataStream &vRecv, in
         std::vector<CAddress> vAddrOk;
         int64_t nNow = GetAdjustedTime();
         int64_t nSince = nNow - 10 * 60;
-        BOOST_FOREACH (CAddress &addr, vAddr)
+        for (CAddress &addr : vAddr)
         {
             boost::this_thread::interruption_point();
 
@@ -5808,8 +5808,8 @@ bool ProcessMessage(CNode *pfrom, std::string strCommand, CDataStream &vRecv, in
                     uint256 hashRand = ArithToUint256(
                         UintToArith256(hashSalt) ^ (hashAddr << 32) ^ ((GetTime() + hashAddr) / (24 * 60 * 60)));
                     hashRand = Hash(BEGIN(hashRand), END(hashRand));
-                    std::multimap<uint256, CNode *> mapMix;
-                    BOOST_FOREACH (CNode *pnode, vNodes)
+                    std::multimap<uint256, CNode_ptr> mapMix;
+                    for (CNode_ptr pnode : vNodes)
                     {
                         if (pnode->nVersion < CADDR_TIME_VERSION)
                             continue;
@@ -5820,7 +5820,7 @@ bool ProcessMessage(CNode *pfrom, std::string strCommand, CDataStream &vRecv, in
                         mapMix.insert(std::make_pair(hashKey, pnode));
                     }
                     int nRelayNodes = fReachable ? 2 : 1; // limited relaying of addresses outside our network(s)
-                    for (std::multimap<uint256, CNode *>::iterator mi = mapMix.begin();
+                    for (std::multimap<uint256, CNode_ptr>::iterator mi = mapMix.begin();
                          mi != mapMix.end() && nRelayNodes-- > 0; ++mi)
                         ((*mi).second)->PushAddress(addr);
                 }
@@ -6420,7 +6420,7 @@ bool ProcessMessage(CNode *pfrom, std::string strCommand, CDataStream &vRecv, in
             // blocks that we need.  Therefore, update block availability for every connected node. If we
             // don't do this, then at the beginning of IBD we will end up only downloading from one peer.
             LOCK(cs_vNodes);
-            for (CNode *pnode: vNodes)
+            for (CNode_ptr pnode: vNodes)
             {
                 UpdateBlockAvailability(pnode->GetId(), pindexLast->GetBlockHash());
             }
@@ -6984,7 +6984,7 @@ bool ProcessMessage(CNode *pfrom, std::string strCommand, CDataStream &vRecv, in
 }
 
 
-bool ProcessMessages(CNode *pfrom)
+bool ProcessMessages(CNode_ptr pfrom)
 {
     AssertLockHeld(pfrom->cs_vRecvMsg);
     const CChainParams &chainparams = Params();
@@ -7121,7 +7121,7 @@ bool ProcessMessages(CNode *pfrom)
 }
 
 
-bool SendMessages(CNode *pto)
+bool SendMessages(CNode_ptr pto)
 {
     const Consensus::Params &consensusParams = Params().GetConsensus();
     {

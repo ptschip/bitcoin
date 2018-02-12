@@ -19,7 +19,7 @@ static uint256 xpeditedBlkSent[NUM_XPEDITED_STORE];
 // zeros on construction)
 static int xpeditedBlkSendPos = 0;
 
-bool CheckAndRequestExpeditedBlocks(CNode *pfrom)
+bool CheckAndRequestExpeditedBlocks(CNode_ptr pfrom)
 {
     if (pfrom->nVersion >= EXPEDITED_VERSION)
     {
@@ -60,7 +60,7 @@ bool CheckAndRequestExpeditedBlocks(CNode *pfrom)
     return false;
 }
 
-bool HandleExpeditedRequest(CDataStream &vRecv, CNode *pfrom)
+bool HandleExpeditedRequest(CDataStream &vRecv, CNode_ptr pfrom)
 {
     uint64_t options;
     vRecv >> options;
@@ -95,7 +95,7 @@ static inline bool IsRecentlyExpeditedAndStore(const uint256 &hash)
     return false;
 }
 
-bool HandleExpeditedBlock(CDataStream &vRecv, CNode *pfrom)
+bool HandleExpeditedBlock(CDataStream &vRecv, CNode_ptr pfrom)
 {
     unsigned char hops;
     unsigned char msgType;
@@ -115,13 +115,13 @@ bool HandleExpeditedBlock(CDataStream &vRecv, CNode *pfrom)
     }
 }
 
-void ActuallySendExpreditedBlock(CXThinBlock &thinBlock, unsigned char hops, const CNode *skip)
+void ActuallySendExpreditedBlock(CXThinBlock &thinBlock, unsigned char hops, const CNode_ptr skip)
 {
     VNodeRefs vNodeRefs(connmgr->ExpeditedBlockNodes());
 
     BOOST_FOREACH (CNodeRef &nodeRef, vNodeRefs)
     {
-        CNode *n = nodeRef.get();
+        CNode_ptr n = nodeRef.get();
 
         if (n->fDisconnect)
         {
@@ -137,7 +137,7 @@ void ActuallySendExpreditedBlock(CXThinBlock &thinBlock, unsigned char hops, con
     }
 }
 
-void SendExpeditedBlock(CXThinBlock &thinBlock, unsigned char hops, const CNode *skip)
+void SendExpeditedBlock(CXThinBlock &thinBlock, unsigned char hops, const CNode_ptr skip)
 {
     LOCK(connmgr->cs_expedited);
     if (!IsRecentlyExpeditedAndStore(thinBlock.header.GetHash()))
@@ -146,7 +146,7 @@ void SendExpeditedBlock(CXThinBlock &thinBlock, unsigned char hops, const CNode 
     }
 }
 
-void SendExpeditedBlock(const CBlock &block, const CNode *skip)
+void SendExpeditedBlock(const CBlock &block, const CNode_ptr skip)
 {
     LOCK(connmgr->cs_expedited);
     if (!IsRecentlyExpeditedAndStore(block.GetHash()))

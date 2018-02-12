@@ -13,11 +13,11 @@
 class CConnMgr
 {
     // We send expedited blocks to these nodes
-    std::vector<CNode *> vSendExpeditedBlocks;
+    std::vector<CNode_ptr> vSendExpeditedBlocks;
     // We send expedited txs to these nodes
-    std::vector<CNode *> vSendExpeditedTxs;
+    std::vector<CNode_ptr> vSendExpeditedTxs;
     // We requested expedited blocks from these nodes
-    std::vector<CNode *> vExpeditedUpstream;
+    std::vector<CNode_ptr> vExpeditedUpstream;
 
     // Maximum number of nodes to send expedited blocks and txs to.
     uint32_t nExpeditedBlocksMax;
@@ -49,24 +49,24 @@ public:
      * @param[in] id     The node ID
      * @return A CNodeRef.  Will be a null CNodeRef if the node was not found.
      */
-    CNodeRef FindNodeFromId(NodeId id);
+    CNode_ptr FindNodeFromId(NodeId id);
 
     /**
      * Enable expedited sends to a node.  Ignored if already enabled.
-     * @param[in] pNode         The node
+     * @param[in] pnode         The node
      * @param[in] fBlocks       True to enable expedited block sends
      * @param[in] fTxs          True to enable expedited tx sends
      * @param[in] fForceIfFull  True to add the node even if the expedited send list is at its maximum
      */
-    void EnableExpeditedSends(CNode *pNode, bool fBlocks, bool fTxs, bool fForceIfFull);
+    void EnableExpeditedSends(CNode_ptr pnode, bool fBlocks, bool fTxs, bool fForceIfFull);
 
     /**
      * Disable expedited sends to a node.  Ignored if not enabled.
-     * @param[in] pNode         The node
+     * @param[in] pnode         The node
      * @param[in] fBlocks       True to disable expedited block sends
      * @param[in] fTxs          True to disnable expedited tx sends
      */
-    void DisableExpeditedSends(CNode *pNode, bool fBlocks, bool fTxs);
+    void DisableExpeditedSends(CNode_ptr pnode, bool fBlocks, bool fTxs);
 
     /**
      * Return expedited node counts.
@@ -84,23 +84,23 @@ public:
 
     /**
      * Must be called after a node is removed from the vNodes list.
-     * @param[in] pNode         The node
+     * @param[in] pnode         The node
      */
-    void RemovedNode(CNode *pNode);
+    void RemovedNode(CNode_ptr pnode);
 
     /**
      * Call to request a node to send, or stop sending, expedited blocks or transactions to us.
-     * @param[in] pNode         The node
+     * @param[in] pnode         The node
      * @param[in] flags         EXPEDITED_STOP, EXPEDITED_BLOCKS, EXPEDITED_TXS
      * @return True if the request was sent.  False if thin blocks are disabled for us or the peer.
      */
-    bool PushExpeditedRequest(CNode *pNode, uint64_t flags);
+    bool PushExpeditedRequest(CNode_ptr pnode, uint64_t flags);
 
     /**
-     * @param[in] pNode         The node
+     * @param[in] pnode         The node
      * @return True if we have requested expedited blocks from the node.
      */
-    bool IsExpeditedUpstream(CNode *pNode);
+    bool IsExpeditedUpstream(CNode_ptr pnode);
 };
 
 extern std::unique_ptr<CConnMgr> connmgr;

@@ -52,6 +52,8 @@ class CNode;
 class CNodeRef;
 class CChainParams;
 
+typedef std::shared_ptr<CNode> CNode_ptr;
+
 /** Add or remove a string to indicate ongoing status */
 class CStatusString
 {
@@ -111,7 +113,7 @@ int32_t UnlimitedComputeBlockVersion(const CBlockIndex *pindexPrev, const Consen
 // The function also allows * or ? wildcards.
 // This is useful for the RPC calls.
 // Returns the first node that matches.
-extern CNodeRef FindLikelyNode(const std::string &addrName);
+extern CNode_ptr FindLikelyNode(const std::string &addrName);
 
 // Convert the BUComments to the string client's "subversion" string
 extern void settingsToUserAgentString();
@@ -232,7 +234,7 @@ extern std::set<uint256> setUnVerifiedOrphanTxHash;
 extern CCriticalSection cs_xval;
 // Xpress Validation: end
 
-extern void LoadFilter(CNode *pfrom, CBloomFilter *filter);
+extern void LoadFilter(CNode_ptr pfrom, CBloomFilter *filter);
 
 extern CSemaphore *semOutboundAddNode;
 extern CStatHistory<uint64_t> recvAmt;
@@ -254,9 +256,9 @@ extern std::map<CNetAddr, ConnectionHistory> mapInboundConnectionTracker;
 extern CCriticalSection cs_mapInboundConnectionTracker;
 
 // statistics
-void UpdateSendStats(CNode *pfrom, const char *strCommand, int msgSize, int64_t nTime);
+void UpdateSendStats(CNode_ptr pfrom, const char *strCommand, int msgSize, int64_t nTime);
 
-void UpdateRecvStats(CNode *pfrom, const std::string &strCommand, int msgSize, int64_t nTimeReceived);
+void UpdateRecvStats(CNode_ptr pfrom, const std::string &strCommand, int msgSize, int64_t nTimeReceived);
 // txn mempool statistics
 extern CStatHistory<unsigned int> txAdded;
 extern CStatHistory<uint64_t, MinValMax<uint64_t> > poolSize;

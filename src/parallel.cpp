@@ -22,7 +22,7 @@ using namespace std;
 static const unsigned int nScriptCheckQueues = 4;
 std::unique_ptr<CParallelValidation> PV;
 
-static void HandleBlockMessageThread(CNode *pfrom,
+static void HandleBlockMessageThread(CNode_ptr pfrom,
     const string strCommand,
     shared_ptr<CBlock> block,
     const CInv inv,
@@ -283,7 +283,7 @@ void CParallelValidation::WaitForAllValidationThreadsToStop()
 
 bool CParallelValidation::Enabled() { return GetBoolArg("-parallel", true); }
 void CParallelValidation::InitThread(const boost::thread::id this_id,
-    const CNode *pfrom,
+    const CNode_ptr pfrom,
     shared_ptr<CBlock> block,
     const CInv &inv,
     uint64_t blockSize)
@@ -439,7 +439,7 @@ void CParallelValidation::ClearOrphanCache(const CBlock &block)
 //  updates
 //  the UTXO if the block has been accepted and the tip updated. We cleanup and release the semaphore after the thread
 //  has finished.
-void CParallelValidation::HandleBlockMessage(CNode *pfrom,
+void CParallelValidation::HandleBlockMessage(CNode_ptr pfrom,
     const string &strCommand,
     std::shared_ptr<CBlock> block,
     const CInv &inv,
@@ -537,7 +537,7 @@ void CParallelValidation::HandleBlockMessage(CNode *pfrom,
     }
 }
 
-void HandleBlockMessageThread(CNode *pfrom,
+void HandleBlockMessageThread(CNode_ptr pfrom,
     const string strCommand,
     shared_ptr<CBlock> block,
     const CInv inv,
@@ -633,7 +633,7 @@ void HandleBlockMessageThread(CNode *pfrom,
             }
 
             // Count up any other remaining nodes with thinblocks in flight.
-            BOOST_FOREACH (CNode *pnode, vNodes)
+            BOOST_FOREACH (CNode_ptr pnode, vNodes)
             {
                 if (pnode->mapThinBlocksInFlight.size() > 0)
                     nTotalThinBlocksInFlight++;

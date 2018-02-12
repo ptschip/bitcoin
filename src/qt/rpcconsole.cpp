@@ -917,8 +917,8 @@ void RPCConsole::disconnectSelectedNode()
     QString strNode = GUIUtil::getEntryData(ui->peerWidget, 0, PeerTableModel::Address);
 
     // Find the node, disconnect it and clear the selected node
-    CNodeRef node = FindNodeRef(strNode.toStdString());
-    if (node)
+    CNode_ptr node = FindNodeRef(strNode.toStdString());
+    if (node != nullptr)
     {
         node->fDisconnect = true;
         clearSelectedNode();
@@ -934,8 +934,8 @@ void RPCConsole::banSelectedNode(int bantime)
     QString strNode = GUIUtil::getEntryData(ui->peerWidget, 0, PeerTableModel::Address);
 
     // Find the node, ban it and clear the selected node
-    CNodeRef bannedNode = FindNodeRef(strNode.toStdString());
-    if (bannedNode)
+    CNode_ptr bannedNode = FindNodeRef(strNode.toStdString());
+    if (bannedNode != nullptr)
     {
         std::string nStr = strNode.toStdString();
         std::string addr;

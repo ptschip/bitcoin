@@ -89,8 +89,8 @@ void CRequestManager::cleanup(OdMap::iterator &itemIt)
     LOCK(cs_vNodes);
     for (CUnknownObj::ObjectSourceList::iterator i = item.availableFrom.begin(); i != item.availableFrom.end(); ++i)
     {
-        CNode *node = i->node;
-        if (node)
+        CNode_ptr node = i->node;
+        if (node != nullptr)
         {
             i->clear();
             // LOG(REQ, "ReqMgr: %s cleanup - removed ref to %d count %d.\n", item.obj.ToString(), node->GetId(),
@@ -114,7 +114,7 @@ void CRequestManager::cleanup(OdMap::iterator &itemIt)
     }
 }
 
-void CRequestManager::cleanupNode(const CNode *pnode)
+void CRequestManager::cleanupNode(const CNode_ptr pnode)
 {
     LOCK(cs_objDownloader);
     for (auto iter : mapBlkInfo)
@@ -130,7 +130,7 @@ void CRequestManager::cleanupNode(const CNode *pnode)
         // remove all the source nodes that match this peer
         for (CUnknownObj::ObjectSourceList::iterator i = item.availableFrom.begin(); i != item.availableFrom.end(); ++i)
         {
-            CNode *node = i->node;
+            CNode_ptr node = i->node;
             if (node && node == pnode)
             {
                 i->clear();
@@ -144,7 +144,7 @@ void CRequestManager::cleanupNode(const CNode *pnode)
 }
 
 // Get this object from somewhere, asynchronously.
-void CRequestManager::AskFor(const CInv &obj, CNode *from, unsigned int priority)
+void CRequestManager::AskFor(const CInv &obj, CNode_ptr from, unsigned int priority)
 {
     LOCK(cs_objDownloader);
     if (obj.type == MSG_TX)
@@ -190,7 +190,7 @@ void CRequestManager::AskFor(const CInv &obj, CNode *from, unsigned int priority
 }
 
 // Get these objects from somewhere, asynchronously.
-void CRequestManager::AskFor(const std::vector<CInv> &objArray, CNode *from, unsigned int priority)
+void CRequestManager::AskFor(const std::vector<CInv> &objArray, CNode_ptr from, unsigned int priority)
 {
     for (auto &inv : objArray)
     {
@@ -198,7 +198,7 @@ void CRequestManager::AskFor(const std::vector<CInv> &objArray, CNode *from, uns
     }
 }
 
-void CRequestManager::AskForDuringIBD(const std::vector<CInv> &objArray, CNode *from, unsigned int priority)
+void CRequestManager::AskForDuringIBD(const std::vector<CInv> &objArray, CNode_ptr from, unsigned int priority)
 {
     // add from this node first so that they get requested first.
     for (auto &inv : objArray)
@@ -207,7 +207,7 @@ void CRequestManager::AskForDuringIBD(const std::vector<CInv> &objArray, CNode *
     }
 
     LOCK(cs_vNodes);
-    for (CNode *pnode : vNodes)
+    for (CNode_ptr pnode : vNodes)
     {
         if (pnode == from)
             continue;
@@ -230,7 +230,7 @@ bool CRequestManager::AlreadyAskedFor(const uint256 &hash)
 }
 
 // Indicate that we got this object, from and bytes are optional (for node performance tracking)
-void CRequestManager::Received(const CInv &obj, CNode *from, int bytes)
+void CRequestManager::Received(const CInv &obj, CNode_ptr from, int bytes)
 {
     int64_t now = GetTimeMicros();
     LOCK(cs_objDownloader);
@@ -275,7 +275,7 @@ void CRequestManager::AlreadyReceived(const CInv &obj)
 }
 
 // Indicate that we got this object, from and bytes are optional (for node performance tracking)
-void CRequestManager::Rejected(const CInv &obj, CNode *from, unsigned char reason)
+void CRequestManager::Rejected(const CInv &obj, CNode_ptr from, unsigned char reason)
 {
     LOCK(cs_objDownloader);
     OdMap::iterator item;
@@ -343,7 +343,7 @@ void CRequestManager::Rejected(const CInv &obj, CNode *from, unsigned char reaso
     }
 }
 
-CNodeRequestData::CNodeRequestData(CNode *n)
+CNodeRequestData::CNodeRequestData(CNode_ptr n)
 {
     assert(n);
     node = n;
@@ -373,7 +373,7 @@ CNodeRequestData::CNodeRequestData(CNode *n)
     desirability -= latency;
 }
 
-bool CUnknownObj::AddSource(CNode *from)
+bool CUnknownObj::AddSource(CNode_ptr from)
 {
     // node is not in the request list
     if (std::find_if(availableFrom.begin(), availableFrom.end(), MatchCNodeRequestData(from)) == availableFrom.end())
@@ -398,7 +398,7 @@ bool CUnknownObj::AddSource(CNode *from)
     return false;
 }
 
-bool RequestBlock(CNode *pfrom, CInv obj)
+bool RequestBlock(CNode_ptr pfrom, CInv obj)
 {
     // NOTE: cs_main is not required. Only MarkBlockAsInFlight needs it, but it is locked within that function.
 
@@ -537,7 +537,7 @@ void CRequestManager::SendRequests()
     // asking for one at time. We can do this because there will be no XTHIN requests possible during
     // this time.
     bool fBatchBlockRequests = IsInitialBlockDownload();
-    std::map<CNode *, std::vector<CInv>> mapBatchBlockRequests;
+    std::map<CNode_ptr, std::vector<CInv>> mapBatchBlockRequests;
 
     // Get Blocks
     while (sendBlkIter != mapBlkInfo.end())

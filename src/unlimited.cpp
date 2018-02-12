@@ -150,7 +150,7 @@ std::string SubverValidator(const std::string &value, std::string *item, bool va
 
 
 // Push all transactions in the mempool to another node
-void UnlimitedPushTxns(CNode *dest);
+void UnlimitedPushTxns(CNode_ptr dest);
 
 int32_t UnlimitedComputeBlockVersion(const CBlockIndex *pindexPrev, const Consensus::Params &params, uint32_t nTime)
 {
@@ -169,7 +169,7 @@ int32_t UnlimitedComputeBlockVersion(const CBlockIndex *pindexPrev, const Consen
 }
 
 
-void UpdateSendStats(CNode *pfrom, const char *strCommand, int msgSize, int64_t nTime)
+void UpdateSendStats(CNode_ptr pfrom, const char *strCommand, int msgSize, int64_t nTime)
 {
     sendAmt += msgSize;
     std::string name("net/send/msg/");
@@ -189,7 +189,7 @@ void UpdateSendStats(CNode *pfrom, const char *strCommand, int msgSize, int64_t 
     }
 }
 
-void UpdateRecvStats(CNode *pfrom, const std::string &strCommand, int msgSize, int64_t nTimeReceived)
+void UpdateRecvStats(CNode_ptr pfrom, const std::string &strCommand, int msgSize, int64_t nTimeReceived)
 {
     recvAmt += msgSize;
     std::string name = "net/recv/msg/" + strCommand;
@@ -224,12 +224,12 @@ std::string FormatCoinbaseMessage(const std::vector<std::string> &comments, cons
     return ret;
 }
 
-CNodeRef FindLikelyNode(const std::string &addrName)
+CNode_ptr FindLikelyNode(const std::string &addrName)
 {
     LOCK(cs_vNodes);
     bool wildcard = (addrName.find_first_of("*?") != std::string::npos);
 
-    BOOST_FOREACH (CNode *pnode, vNodes)
+    for (CNode_ptr pnode : vNodes)
     {
         if (wildcard)
         {
@@ -239,7 +239,7 @@ CNodeRef FindLikelyNode(const std::string &addrName)
         else if (pnode->addrName.find(addrName) != std::string::npos)
             return (pnode);
     }
-    return NULL;
+    return nullptr;
 }
 
 UniValue expedited(const UniValue &params, bool fHelp)
@@ -263,8 +263,8 @@ UniValue expedited(const UniValue &params, bool fHelp)
     std::string obj = params[0].get_str();
     std::string strNode = params[1].get_str();
 
-    CNodeRef node(FindLikelyNode(strNode));
-    if (!node)
+    CNode_ptr node(FindLikelyNode(strNode));
+    if (node == nullptr)
     {
         throw runtime_error("Unknown node");
     }
@@ -292,7 +292,7 @@ UniValue expedited(const UniValue &params, bool fHelp)
             flags |= EXPEDITED_STOP;
     }
 
-    connmgr->PushExpeditedRequest(node.get(), flags);
+    connmgr->PushExpeditedRequest(node, flags);
 
     return NullUniValue;
 }
@@ -311,16 +311,16 @@ UniValue pushtx(const UniValue &params, bool fHelp)
 
     string strNode = params[0].get_str();
 
-    CNodeRef node(FindLikelyNode(strNode));
-    if (!node)
+    CNode_ptr node(FindLikelyNode(strNode));
+    if (node == nullptr)
         throw runtime_error("Unknown node");
 
-    UnlimitedPushTxns(node.get());
+    UnlimitedPushTxns(node);
 
     return NullUniValue;
 }
 
-void UnlimitedPushTxns(CNode *dest)
+void UnlimitedPushTxns(CNode_ptr dest)
 {
     // LOCK2(cs_main, pfrom->cs_filter);
     LOCK(dest->cs_filter);
@@ -1302,7 +1302,7 @@ int GetBlockchainHeight()
     return chainActive.Height();
 }
 
-void LoadFilter(CNode *pfrom, CBloomFilter *filter)
+void LoadFilter(CNode_ptr pfrom, CBloomFilter *filter)
 {
     if (!filter->IsWithinSizeConstraints())
         // There is no excuse for sending a too-large filter
@@ -1764,7 +1764,7 @@ extern std::map<std::pair<void *, void *>, LockStack> lockorders;
 #endif
 
 extern std::vector<std::string> vUseDNSSeeds;
-extern std::list<CNode *> vNodesDisconnected;
+extern std::list<CNode_ptr> vNodesDisconnected;
 extern std::set<CNetAddr> setservAddNodeAddresses;
 extern UniValue getstructuresizes(const UniValue &params, bool fHelp)
 {
@@ -1830,10 +1830,10 @@ extern UniValue getstructuresizes(const UniValue &params, bool fHelp)
 #endif
 
     LOCK(cs_vNodes);
-    std::vector<CNode *>::iterator n;
+    std::vector<CNode_ptr>::iterator n;
     uint64_t totalThinBlockSize = 0;
     int disconnected = 0; // watch # of disconnected nodes to ensure they are being cleaned up
-    for (std::vector<CNode *>::iterator it = vNodes.begin(); it != vNodes.end(); ++it)
+    for (std::vector<CNode_ptr>::iterator it = vNodes.begin(); it != vNodes.end(); ++it)
     {
         if (*it == NULL)
             continue;

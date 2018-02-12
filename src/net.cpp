@@ -93,7 +93,7 @@ uint64_t nLocalServices = NODE_NETWORK;
 // BU moved to globals.cpp: CCriticalSection cs_mapLocalHost;
 // BU moved to globals.cpp: map<CNetAddr, LocalServiceInfo> mapLocalHost;
 static bool vfLimited[NET_MAX] = {};
-static CNode *pnodeLocalHost = nullptr;
+static CNode_ptr pnodeLocalHost = nullptr;
 uint64_t nLocalHostNonce = 0;
 static std::vector<ListenSocket> vhListenSocket;
 extern CAddrMan addrman;
@@ -104,7 +104,7 @@ bool fAddressesInitialized = false;
 std::string strSubVersion;
 
 // BU moved to global.cpp
-// extern vector<CNode*> vNodes;
+// extern vector<CNode_ptr> vNodes;
 // extern CCriticalSection cs_vNodes;
 // map<CInv, CDataStream> mapRelay;
 // CCriticalSection cs_mapRelay;
@@ -214,14 +214,14 @@ int GetnScore(const CService &addr)
 }
 
 // Is our peer's addrLocal potentially useful as an external IP source?
-bool IsPeerAddrLocalGood(CNode *pnode)
+bool IsPeerAddrLocalGood(CNode_ptr pnode)
 {
     return fDiscover && pnode->addr.IsRoutable() && pnode->addrLocal.IsRoutable() &&
            !IsLimited(pnode->addrLocal.GetNetwork());
 }
 
 // pushes our own address to a peer
-void AdvertiseLocal(CNode *pnode)
+void AdvertiseLocal(CNode_ptr pnode)
 {
     if (fListen && pnode->fSuccessfullyConnected)
     {
@@ -341,10 +341,10 @@ uint64_t CNode::nMaxOutboundTimeframe = 60 * 60 * 24; // 1 day
 uint64_t CNode::nMaxOutboundCycleStartTime = 0;
 
 // BU: FindNode() functions enforce holding of cs_vNodes lock to prevent use-after-free errors
-static CNode *FindNode(const CNetAddr &ip)
+static CNode_ptr FindNode(const CNetAddr &ip)
 {
     AssertLockHeld(cs_vNodes);
-    for (CNode *pnode : vNodes)
+    for (auto pnode : vNodes)
     {
         if ((CNetAddr)pnode->addr == ip)
             return (pnode);
@@ -352,10 +352,10 @@ static CNode *FindNode(const CNetAddr &ip)
     return nullptr;
 }
 
-static CNode *FindNode(const std::string &addrName)
+static CNode_ptr FindNode(const std::string &addrName)
 {
     AssertLockHeld(cs_vNodes);
-    for (CNode *pnode : vNodes)
+    for (auto pnode : vNodes)
     {
         if (pnode->addrName == addrName)
             return (pnode);
@@ -363,10 +363,10 @@ static CNode *FindNode(const std::string &addrName)
     return nullptr;
 }
 
-static CNode *FindNode(const CService &addr)
+static  CNode_ptr FindNode(const CService &addr)
 {
     AssertLockHeld(cs_vNodes);
-    for (CNode *pnode : vNodes)
+    for (auto pnode : vNodes)
     {
         if ((CService)pnode->addr == addr)
             return (pnode);
@@ -374,17 +374,17 @@ static CNode *FindNode(const CService &addr)
     return nullptr;
 }
 
-CNodeRef FindNodeRef(const std::string &addrName)
+CNode_ptr FindNodeRef(const std::string &addrName)
 {
     LOCK(cs_vNodes);
-    return CNodeRef(FindNode(addrName));
+    return FindNode(addrName);
 }
 
 int DisconnectSubNetNodes(const CSubNet &subNet)
 {
     int nDisconnected = 0;
     LOCK(cs_vNodes);
-    for (CNode *pnode : vNodes)
+    for (CNode_ptr pnode : vNodes)
     {
         if (subNet.Match((CNetAddr)pnode->addr))
         {
@@ -397,7 +397,7 @@ int DisconnectSubNetNodes(const CSubNet &subNet)
     return nDisconnected;
 }
 
-CNode *ConnectNode(CAddress addrConnect, const char *pszDest, bool fCountFailure)
+CNode_ptr ConnectNode(CAddress addrConnect, const char *pszDest, bool fCountFailure)
 {
     if (pszDest == nullptr)
     {
@@ -407,7 +407,7 @@ CNode *ConnectNode(CAddress addrConnect, const char *pszDest, bool fCountFailure
         // BU: Add lock on cs_vNodes as FindNode now requries it to prevent potential use-after-free errors
         LOCK(cs_vNodes);
         // Look for an existing connection
-        CNode *pnode = FindNode((CService)addrConnect);
+        CNode_ptr pnode = FindNode((CService)addrConnect);
         if (pnode)
         {
             // NOTE: Because ConnectNode adds a reference, we don't have to protect the returned CNode* like for
@@ -438,7 +438,7 @@ CNode *ConnectNode(CAddress addrConnect, const char *pszDest, bool fCountFailure
         addrman.Attempt(addrConnect, fCountFailure);
 
         // Add node
-        CNode *pnode = new CNode(hSocket, addrConnect, pszDest ? pszDest : "", false);
+        CNode_ptr pnode(new CNode(hSocket, addrConnect, pszDest ? pszDest : "", false));
         pnode->AddRef();
 
         {
@@ -672,7 +672,7 @@ int CNetMessage::readData(const char *pch, unsigned int nBytes)
 
 
 // requires LOCK(cs_vSend), BU: returns > 0 if any data was sent, 0 if nothing accomplished.
-int SocketSendData(CNode *pnode)
+int SocketSendData(CNode_ptr pnode)
 {
     // BU This variable is incremented if something happens.  If it is zero at the bottom of the loop, we delay.  This
     // solves spin loop issues where the select does not block but no bytes can be transferred (traffic shaping limited,
@@ -758,7 +758,7 @@ int SocketSendData(CNode *pnode)
     return progress;
 }
 
-extern list<CNode *> vNodesDisconnected;
+extern list<CNode_ptr > vNodesDisconnected;
 
 #if 0 // Not currenly used
 static bool ReverseCompareNodeMinPingTime(const CNodeRef &a, const CNodeRef &b)
@@ -819,7 +819,7 @@ static bool AttemptToEvictConnection(bool fPreferNewConnection)
         LOCK(cs_vNodes);
 
         static int64_t nLastTime = GetTime();
-        for (CNode *node : vNodes)
+        for (CNode_ptr node : vNodes)
         {
             // Decay the activity bytes for each node over a period of 2 hours.  This gradually de-prioritizes a
             // connection
@@ -976,7 +976,7 @@ static void AcceptConnection(const ListenSocket &hListenSocket)
     int nInbound = 0;
     {
         LOCK(cs_vNodes);
-        for (CNode *pnode : vNodes)
+        for (CNode_ptr pnode : vNodes)
             if (pnode->fInbound)
                 nInbound++;
     }
@@ -1039,7 +1039,8 @@ static void AcceptConnection(const ListenSocket &hListenSocket)
     }
     // BU - end section
 
-    CNode *pnode = new CNode(hSocket, addr, "", true);
+    CNode_ptr pnode(new CNode(hSocket, addr, "", true));
+
     pnode->AddRef();
     pnode->fWhitelisted = whitelisted;
 
@@ -1072,8 +1073,8 @@ void ThreadSocketHandler()
         {
             LOCK(cs_vNodes);
             // Disconnect unused nodes
-            vector<CNode *> vNodesCopy = vNodes;
-            for (CNode *pnode : vNodesCopy)
+            vector<CNode_ptr> vNodesCopy = vNodes;
+            for (CNode_ptr pnode : vNodesCopy)
             {
                 if (pnode->fDisconnect || (pnode->GetRefCount() <= 0 && pnode->vRecvMsg.empty() &&
                                               pnode->nSendSize == 0 && pnode->ssSend.empty()))
@@ -1099,8 +1100,8 @@ void ThreadSocketHandler()
         }
         {
             // Delete disconnected nodes
-            list<CNode *> vNodesDisconnectedCopy = vNodesDisconnected;
-            for (CNode *pnode : vNodesDisconnectedCopy)
+            list<CNode_ptr> vNodesDisconnectedCopy = vNodesDisconnected;
+            for (CNode_ptr pnode : vNodesDisconnectedCopy)
             {
                 // wait until threads are done using it
                 if (pnode->GetRefCount() <= 0)
@@ -1124,7 +1125,7 @@ void ThreadSocketHandler()
                         vNodesDisconnected.remove(pnode);
                         // no need to remove from vNodes. we know pnode has already been removed from vNodes since that
                         // occurred prior to insertion into vNodesDisconnected
-                        delete pnode;
+                 //       delete pnode;
                     }
                 }
             }
@@ -1162,7 +1163,7 @@ void ThreadSocketHandler()
 
         {
             LOCK(cs_vNodes);
-            for (CNode *pnode : vNodes)
+            for (CNode_ptr pnode : vNodes)
             {
                 // It is necessary to use a temporary variable to ensure that pnode->hSocket is not changed by another
                 // thread during execution.
@@ -1240,15 +1241,15 @@ void ThreadSocketHandler()
         //
         // Service each socket
         //
-        vector<CNode *> vNodesCopy;
+        vector<CNode_ptr> vNodesCopy;
         {
             LOCK(cs_vNodes);
             vNodesCopy = vNodes;
-            for (CNode *pnode : vNodesCopy)
+            for (CNode_ptr pnode : vNodesCopy)
                 pnode->AddRef();
         }
 
-        for (CNode *pnode : vNodesCopy)
+        for (CNode_ptr pnode : vNodesCopy)
         {
             boost::this_thread::interruption_point();
 
@@ -1364,7 +1365,7 @@ void ThreadSocketHandler()
         }
         {
             LOCK(cs_vNodes);
-            for (CNode *pnode : vNodesCopy)
+            for (CNode_ptr pnode : vNodesCopy)
                 pnode->Release();
         }
 
@@ -1745,12 +1746,12 @@ void ThreadOpenConnections()
         int nOutbound = 0;
         int nThinBlockCapable = 0;
         set<vector<unsigned char> > setConnected;
-        CNode *ptemp1 = nullptr;
-        CNode *ptemp2 = nullptr;
+        CNode_ptr ptemp1 = nullptr;
+        CNode_ptr ptemp2 = nullptr;
         bool fDisconnected = false;
         {
             LOCK(cs_vNodes);
-            for (CNode *pnode : vNodes)
+            for (CNode_ptr pnode : vNodes)
             {
                 if (pnode->fAutoOutbound) // only count outgoing connections.
                 {
@@ -1924,7 +1925,7 @@ void ThreadOpenConnections()
                     nullptr, false, fFeeler))
             {
                 LOCK(cs_vNodes);
-                CNode *pnode = FindNode((CService)addrConnect);
+                CNode_ptr pnode = FindNode((CService)addrConnect);
                 // We need to use a separate outbound flag so as not to differentiate these outbound
                 // nodes with ones that were added using -addnode -connect-thinblock or -connect.
                 if (pnode)
@@ -2009,7 +2010,7 @@ void ThreadOpenAddedConnections()
         // (keeping in mind that addnode entries can have many IPs if fNameLookup)
         {
             LOCK(cs_vNodes);
-            for (CNode *pnode : vNodes)
+            for (CNode_ptr pnode : vNodes)
             {
                 for (list<vector<CService> >::iterator it = lservAddressesToAdd.begin();
                      it != lservAddressesToAdd.end(); it++)
@@ -2069,7 +2070,7 @@ bool OpenNetworkConnection(const CAddress &addrConnect,
             return false;
     }
 
-    CNode *pnode = ConnectNode(addrConnect, pszDest, fCountFailure);
+    CNode_ptr pnode = ConnectNode(addrConnect, pszDest, fCountFailure);
     boost::this_thread::interruption_point();
 
     if (!pnode)
@@ -2095,11 +2096,11 @@ void ThreadMessageHandler()
     {
         requester.SendRequests();
 
-        vector<CNode *> vNodesCopy;
+        vector<CNode_ptr> vNodesCopy;
         {
             LOCK(cs_vNodes);
             vNodesCopy.reserve(vNodes.size());
-            for (CNode *pnode : vNodes)
+            for (CNode_ptr pnode : vNodes)
             {
                 vNodesCopy.push_back(pnode);
                 pnode->AddRef();
@@ -2108,7 +2109,7 @@ void ThreadMessageHandler()
 
         bool fSleep = true;
 
-        for (CNode *pnode : vNodesCopy)
+        for (CNode_ptr pnode : vNodesCopy)
         {
             if (pnode->fDisconnect)
                 continue;
@@ -2141,7 +2142,7 @@ void ThreadMessageHandler()
 
         {
             LOCK(cs_vNodes);
-            for (CNode *pnode : vNodesCopy)
+            for (CNode_ptr pnode : vNodesCopy)
                 pnode->Release();
         }
 
@@ -2355,7 +2356,7 @@ void StartNode(boost::thread_group &threadGroup, CScheduler &scheduler)
     }
 
     if (pnodeLocalHost == nullptr)
-        pnodeLocalHost = new CNode(INVALID_SOCKET, CAddress(CService("127.0.0.1", 0), nLocalServices));
+        pnodeLocalHost = std::shared_ptr<CNode>(new CNode(INVALID_SOCKET, CAddress(CService("127.0.0.1", 0), nLocalServices)));
 
     Discover(threadGroup);
 
@@ -2406,7 +2407,7 @@ void NetCleanup()
     LOCK(cs_vNodes);
 
     // Close sockets
-    for (CNode *pnode : vNodes)
+    for (CNode_ptr pnode : vNodes)
     {
         if (pnode->hSocket != INVALID_SOCKET)
             CloseSocket(pnode->hSocket);
@@ -2419,10 +2420,10 @@ void NetCleanup()
     }
 
     // clean up some globals (to help leak detection)
-    for (CNode *pnode : vNodes)
-        delete pnode;
-    for (CNode *pnode : vNodesDisconnected)
-        delete pnode;
+  //  for (CNode_ptr pnode : vNodes)
+  //      delete pnode;
+  //  for (CNode_ptr pnode : vNodesDisconnected)
+  //      delete pnode;
     vNodes.clear();
     vNodesDisconnected.clear();
     vhListenSocket.clear();
@@ -2433,8 +2434,8 @@ void NetCleanup()
     if (semOutboundAddNode)
         delete semOutboundAddNode;
     semOutboundAddNode = nullptr;
-    if (pnodeLocalHost)
-        delete pnodeLocalHost;
+   //if (pnodeLocalHost)
+    //    delete pnodeLocalHost;
     pnodeLocalHost = nullptr;
 
 #ifdef WIN32
@@ -2477,7 +2478,7 @@ void RelayTransaction(const CTransaction &tx, const CDataStream &ss)
         vRelayExpiration.push_back(std::make_pair(GetTime() + 15 * 60, inv));
     }
     LOCK(cs_vNodes);
-    for (CNode *pnode : vNodes)
+    for (CNode_ptr pnode : vNodes)
     {
         if (!pnode->fRelayTxes)
             continue;
@@ -2847,7 +2848,7 @@ CNode::CNode(SOCKET hSocketIn, const CAddress &addrIn, const std::string &addrNa
     if (hSocket != INVALID_SOCKET && !fInbound)
         PushVersion();
 
-    GetNodeSignals().InitializeNode(GetId(), this);
+    GetNodeSignals().InitializeNode(GetId(), std::shared_ptr<CNode>(this));
 }
 
 CNode::~CNode()
@@ -2961,7 +2962,7 @@ void CNode::EndMessage() UNLOCK_FUNCTION(cs_vSend)
     unsigned int nSize = ssSend.size() - CMessageHeader::HEADER_SIZE;
     WriteLE32((uint8_t *)&ssSend[CMessageHeader::MESSAGE_SIZE_OFFSET], nSize);
 
-    UpdateSendStats(this, currentCommand, nSize + CMessageHeader::HEADER_SIZE, GetTimeMicros());
+    UpdateSendStats(std::shared_ptr<CNode>(this), currentCommand, nSize + CMessageHeader::HEADER_SIZE, GetTimeMicros());
 
     // Set the checksum
     uint256 hash = Hash(ssSend.begin() + CMessageHeader::HEADER_SIZE, ssSend.end());
@@ -3005,7 +3006,7 @@ void CNode::EndMessage() UNLOCK_FUNCTION(cs_vSend)
 
     // If write queue empty, attempt "optimistic write"
     if (it == vSendMsg.begin())
-        SocketSendData(this);
+        SocketSendData(std::shared_ptr<CNode>(this));
 
     LEAVE_CRITICAL_SECTION(cs_vSend);
 }

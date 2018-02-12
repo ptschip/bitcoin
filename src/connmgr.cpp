@@ -12,36 +12,36 @@ std::unique_ptr<CConnMgr> connmgr(new CConnMgr);
  * Find a node in a vector.  Just calls std::find.  Split out for cleanliness and also because std:find won't be
  * enough if we switch to vectors of noderefs.  Requires any lock for vector traversal to be held.
  */
-static std::vector<CNode *>::iterator FindNode(std::vector<CNode *> &vNodes, CNode *pNode)
+static std::vector<CNode_ptr>::iterator FindNode(std::vector<CNode_ptr> &vNodes, CNode_ptr pnode)
 {
-    return std::find(vNodes.begin(), vNodes.end(), pNode);
+    return std::find(vNodes.begin(), vNodes.end(), pnode);
 }
 
 /**
  * Add a node to a vector, and take a reference.  This function does NOT prevent adding duplicates.
  * Requires any lock for vector traversal to be held.
  * @param[in] vNodes      The vector of nodes.
- * @param[in] pNode       The node to add.
+ * @param[in] pnode       The node to add.
  */
-static void AddNode(std::vector<CNode *> &vNodes, CNode *pNode)
+static void AddNode(std::vector<CNode_ptr> &vNodes, CNode_ptr pnode)
 {
-    pNode->AddRef();
-    vNodes.push_back(pNode);
+    pnode->AddRef();
+    vNodes.push_back(pnode);
 }
 
 /**
  * If a node is present in a vector, remove it and drop a reference.
  * Requires any lock for vector traversal to be held.
  * @param[in] vNodes      The vector of nodes.
- * @param[in] pNode       The node to remove.
+ * @param[in] pnode       The node to remove.
  * @return  True if the node was originally present, false if not.
  */
-static bool RemoveNode(std::vector<CNode *> &vNodes, CNode *pNode)
+static bool RemoveNode(std::vector<CNode_ptr> &vNodes, CNode_ptr pnode)
 {
-    auto Node = FindNode(vNodes, pNode);
+    auto Node = FindNode(vNodes, pnode);
     if (Node != vNodes.end())
     {
-        pNode->Release();
+        pnode->Release();
         vNodes.erase(Node);
         return true;
     }
@@ -65,64 +65,63 @@ NodeId CConnMgr::NextNodeId()
 /**
  * Given a node ID, return a node reference to the node.
  */
-CNodeRef CConnMgr::FindNodeFromId(NodeId id)
+CNode_ptr CConnMgr::FindNodeFromId(NodeId id)
 {
     LOCK(cs_vNodes);
-
-    for (CNode *pNode : vNodes)
+    for (auto pnode : vNodes)
     {
-        if (pNode->GetId() == id)
-            return CNodeRef(pNode);
+        if (pnode->GetId() == id)
+            return pnode;
     }
 
-    return CNodeRef();
+    return nullptr;
 }
 
-void CConnMgr::EnableExpeditedSends(CNode *pNode, bool fBlocks, bool fTxs, bool fForceIfFull)
+void CConnMgr::EnableExpeditedSends(CNode_ptr pnode, bool fBlocks, bool fTxs, bool fForceIfFull)
 {
     LOCK(cs_expedited);
 
-    if (fBlocks && FindNode(vSendExpeditedBlocks, pNode) == vSendExpeditedBlocks.end())
+    if (fBlocks && FindNode(vSendExpeditedBlocks, pnode) == vSendExpeditedBlocks.end())
     {
         if (fForceIfFull || vSendExpeditedBlocks.size() < nExpeditedBlocksMax)
         {
-            AddNode(vSendExpeditedBlocks, pNode);
-            LOG(THIN, "Enabled expedited blocks to peer %s (%u peers total)\n", pNode->GetLogName(),
+            AddNode(vSendExpeditedBlocks, pnode);
+            LOG(THIN, "Enabled expedited blocks to peer %s (%u peers total)\n", pnode->GetLogName(),
                 vSendExpeditedBlocks.size());
         }
         else
         {
-            LOG(THIN, "Cannot enable expedited blocks to peer %s, I am full (%u peers total)\n", pNode->GetLogName(),
+            LOG(THIN, "Cannot enable expedited blocks to peer %s, I am full (%u peers total)\n", pnode->GetLogName(),
                 vSendExpeditedBlocks.size());
         }
     }
 
-    if (fTxs && FindNode(vSendExpeditedTxs, pNode) == vSendExpeditedTxs.end())
+    if (fTxs && FindNode(vSendExpeditedTxs, pnode) == vSendExpeditedTxs.end())
     {
         if (fForceIfFull || vSendExpeditedTxs.size() < nExpeditedTxsMax)
         {
-            AddNode(vSendExpeditedTxs, pNode);
-            LOG(THIN, "Enabled expedited txs to peer %s (%u peers total)\n", pNode->GetLogName(),
+            AddNode(vSendExpeditedTxs, pnode);
+            LOG(THIN, "Enabled expedited txs to peer %s (%u peers total)\n", pnode->GetLogName(),
                 vSendExpeditedTxs.size());
         }
         else
         {
-            LOG(THIN, "Cannot enable expedited txs to peer %s, I am full (%u peers total)\n", pNode->GetLogName(),
+            LOG(THIN, "Cannot enable expedited txs to peer %s, I am full (%u peers total)\n", pnode->GetLogName(),
                 vSendExpeditedTxs.size());
         }
     }
 }
 
-void CConnMgr::DisableExpeditedSends(CNode *pNode, bool fBlocks, bool fTxs)
+void CConnMgr::DisableExpeditedSends(CNode_ptr pnode, bool fBlocks, bool fTxs)
 {
     LOCK(cs_expedited);
 
-    if (fBlocks && RemoveNode(vSendExpeditedBlocks, pNode))
-        LOG(THIN, "Disabled expedited blocks to peer %s (%u peers total)\n", pNode->GetLogName(),
+    if (fBlocks && RemoveNode(vSendExpeditedBlocks, pnode))
+        LOG(THIN, "Disabled expedited blocks to peer %s (%u peers total)\n", pnode->GetLogName(),
             vSendExpeditedBlocks.size());
 
-    if (fTxs && RemoveNode(vSendExpeditedTxs, pNode))
-        LOG(THIN, "Disabled expedited txs to peer %s (%u peers total)\n", pNode->GetLogName(),
+    if (fTxs && RemoveNode(vSendExpeditedTxs, pnode))
+        LOG(THIN, "Disabled expedited txs to peer %s (%u peers total)\n", pnode->GetLogName(),
             vSendExpeditedTxs.size());
 }
 
@@ -133,13 +132,13 @@ void CConnMgr::HandleCommandLine()
 }
 
 // Called after a node is removed from the node list.
-void CConnMgr::RemovedNode(CNode *pNode)
+void CConnMgr::RemovedNode(CNode_ptr pnode)
 {
     LOCK(cs_expedited);
 
-    RemoveNode(vSendExpeditedBlocks, pNode);
-    RemoveNode(vSendExpeditedTxs, pNode);
-    RemoveNode(vExpeditedUpstream, pNode);
+    RemoveNode(vSendExpeditedBlocks, pnode);
+    RemoveNode(vSendExpeditedTxs, pnode);
+    RemoveNode(vExpeditedUpstream, pnode);
 }
 
 void CConnMgr::ExpeditedNodeCounts(uint32_t &nBlocks, uint32_t &nTxs, uint32_t &nUpstream)
@@ -157,20 +156,20 @@ VNodeRefs CConnMgr::ExpeditedBlockNodes()
 
     VNodeRefs vRefs;
 
-    BOOST_FOREACH (CNode *pNode, vExpeditedUpstream)
-        vRefs.push_back(CNodeRef(pNode));
+    for (auto pnode : vExpeditedUpstream)
+        vRefs.push_back(CNodeRef(pnode));
 
     return vRefs;
 }
 
-bool CConnMgr::PushExpeditedRequest(CNode *pNode, uint64_t flags)
+bool CConnMgr::PushExpeditedRequest(CNode_ptr pnode, uint64_t flags)
 {
     if (!IsThinBlocksEnabled())
-        return error("Thinblocks is not enabled so cannot request expedited blocks from peer %s", pNode->GetLogName());
+        return error("Thinblocks is not enabled so cannot request expedited blocks from peer %s", pnode->GetLogName());
 
-    if (!pNode->ThinBlockCapable())
+    if (!pnode->ThinBlockCapable())
         return error("Remote peer has not enabled Thinblocks so you cannot request expedited blocks from %s",
-            pNode->GetLogName());
+            pnode->GetLogName());
 
     if (flags & EXPEDITED_BLOCKS)
     {
@@ -179,26 +178,26 @@ bool CConnMgr::PushExpeditedRequest(CNode *pNode, uint64_t flags)
         // Add or remove this node as an upstream node
         if (flags & EXPEDITED_STOP)
         {
-            RemoveNode(vExpeditedUpstream, pNode);
-            LOGA("Requesting a stop of expedited blocks from peer %s\n", pNode->GetLogName());
+            RemoveNode(vExpeditedUpstream, pnode);
+            LOGA("Requesting a stop of expedited blocks from peer %s\n", pnode->GetLogName());
         }
         else
         {
-            if (FindNode(vExpeditedUpstream, pNode) == vExpeditedUpstream.end())
-                AddNode(vExpeditedUpstream, pNode);
-            LOGA("Requesting expedited blocks from peer %s\n", pNode->GetLogName());
+            if (FindNode(vExpeditedUpstream, pnode) == vExpeditedUpstream.end())
+                AddNode(vExpeditedUpstream, pnode);
+            LOGA("Requesting expedited blocks from peer %s\n", pnode->GetLogName());
         }
     }
 
     // Push even if its a repeat to allow the operator to use the CLI or GUI to force another message.
-    pNode->PushMessage(NetMsgType::XPEDITEDREQUEST, flags);
+    pnode->PushMessage(NetMsgType::XPEDITEDREQUEST, flags);
 
     return true;
 }
 
-bool CConnMgr::IsExpeditedUpstream(CNode *pNode)
+bool CConnMgr::IsExpeditedUpstream(CNode_ptr pnode)
 {
     LOCK(cs_expedited);
 
-    return FindNode(vExpeditedUpstream, pNode) != vExpeditedUpstream.end();
+    return FindNode(vExpeditedUpstream, pnode) != vExpeditedUpstream.end();
 }
