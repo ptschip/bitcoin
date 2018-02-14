@@ -38,12 +38,10 @@ enum
     DEFAULT_CHECKPOINT_DAYS =
         30, // Default for the number of days in the past we check scripts during initial block download
 
-    MAX_HEADER_REQS_DURING_IBD = 3,
+    MAX_HEADER_REQS_DURING_IBD = 1,
     // if the blockchain is this far (in seconds) behind the current time, only request headers from a single
     // peer.  This makes IBD more efficient.
-    // TODO: since the new DAA cash mining is no more erratic than bitcoin legacy.
-    // Wouldn't been better to set it back to what it was? (i.e. 24 * 60 * 60)
-    SINGLE_PEER_REQUEST_MODE_AGE = (7 * 24 * 60 * 60),
+    SINGLE_PEER_REQUEST_MODE_AGE = (24 * 60 * 60),
 };
 
 class CBlock;
