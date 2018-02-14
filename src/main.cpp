@@ -329,35 +329,35 @@ static bool MarkBlockAsReceived(const uint256 &hash, CNode *pnode)
         // calculate avg block response time over last 100 blocks to be used for IBD tuning
         // start at a higher number so that we don't start jamming IBD when we restart a node sync
         static uint8_t blockRange = 50;
-        if ( pnode->nAvgBlkResponseTime < 0)
-             pnode->nAvgBlkResponseTime = 2.0;
-        if ( pnode->nAvgBlkResponseTime > 0)
-             pnode->nAvgBlkResponseTime -= (pnode->nAvgBlkResponseTime / blockRange);
+        if (pnode->nAvgBlkResponseTime < 0)
+            pnode->nAvgBlkResponseTime = 2.0;
+        if (pnode->nAvgBlkResponseTime > 0)
+            pnode->nAvgBlkResponseTime -= (pnode->nAvgBlkResponseTime / blockRange);
         pnode->nAvgBlkResponseTime += nResponseTime / blockRange;
 
         if (pnode->nAvgBlkResponseTime < 0.2)
         {
-             pnode->nMaxBlocksInTransitPerPeer = 96;
+            pnode->nMaxBlocksInTransitPerPeer = 96;
         }
         else if (pnode->nAvgBlkResponseTime < 0.5)
         {
-             pnode->nMaxBlocksInTransitPerPeer = 80;
+            pnode->nMaxBlocksInTransitPerPeer = 80;
         }
         else if (pnode->nAvgBlkResponseTime < 0.9)
         {
-             pnode->nMaxBlocksInTransitPerPeer = 64;
+            pnode->nMaxBlocksInTransitPerPeer = 64;
         }
         else if (pnode->nAvgBlkResponseTime < 1.4)
         {
-             pnode->nMaxBlocksInTransitPerPeer = 48;
+            pnode->nMaxBlocksInTransitPerPeer = 48;
         }
         else if (pnode->nAvgBlkResponseTime < 2.0)
         {
-             pnode->nMaxBlocksInTransitPerPeer = 32;
+            pnode->nMaxBlocksInTransitPerPeer = 32;
         }
         else
         {
-             pnode->nMaxBlocksInTransitPerPeer = 16;
+            pnode->nMaxBlocksInTransitPerPeer = 16;
         }
 
         CNodeState *state = State(pnode->id);
@@ -6412,7 +6412,7 @@ bool ProcessMessage(CNode *pfrom, std::string strCommand, CDataStream &vRecv, in
             // blocks that we need.  Therefore, update block availability for every connected node. If we
             // don't do this, then at the beginning of IBD we will end up only downloading from one peer.
             LOCK(cs_vNodes);
-            for (CNode *pnode: vNodes)
+            for (CNode *pnode : vNodes)
             {
                 UpdateBlockAvailability(pnode->GetId(), pindexLast->GetBlockHash());
             }
@@ -7245,7 +7245,7 @@ bool SendMessages(CNode *pto)
         CNodeState &state = *State(pto->GetId());
 
         // We need to update any newly connected peers with a best header if we are doing an initial sync.
-        // If we don't do this then we'll end up downloading blocks all from one peer. 
+        // If we don't do this then we'll end up downloading blocks all from one peer.
         if (IsInitialBlockDownload() && state.pindexBestKnownBlock == nullptr)
         {
             UpdateBlockAvailability(pto->GetId(), pindexBestHeader->GetBlockHash());
@@ -7540,7 +7540,8 @@ bool SendMessages(CNode *pto)
         if (!pto->fDisconnect && !pto->fClient && state.nBlocksInFlight < (int)pto->nMaxBlocksInTransitPerPeer)
         {
             std::vector<CBlockIndex *> vToDownload;
-            FindNextBlocksToDownload(pto->GetId(), pto->nMaxBlocksInTransitPerPeer - state.nBlocksInFlight, vToDownload);
+            FindNextBlocksToDownload(pto->GetId(),
+                pto->nMaxBlocksInTransitPerPeer - state.nBlocksInFlight, vToDownload);
             // LOG(REQ, "IBD AskFor %d blocks from peer=%s\n", vToDownload.size(), pto->GetLogName());
             std::vector<CInv> vGetBlocks;
             for (CBlockIndex *pindex : vToDownload)
