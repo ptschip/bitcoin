@@ -313,63 +313,71 @@ void FinalizeNode(NodeId nodeid)
     }
 }
 
-// Requires cs_main.
 // Returns a bool indicating whether we requested this block.
-bool MarkBlockAsReceived(const uint256 &hash)
+static bool MarkBlockAsReceived(const uint256 &hash, CNode *pnode)
 {
+    AssertLockHeld(cs_main);
+
     std::map<uint256, std::pair<NodeId, std::list<QueuedBlock>::iterator> >::iterator itInFlight =
         mapBlocksInFlight.find(hash);
     if (itInFlight != mapBlocksInFlight.end())
     {
-        // BUIP010 Xtreme Thinblocks: begin section
         int64_t getdataTime = itInFlight->second.second->nTime;
         int64_t now = GetTimeMicros();
         double nResponseTime = (double)(now - getdataTime) / 1000000.0;
 
-        // BU:  calculate avg block response time over last 20 blocks to be used for IBD tuning
+        // calculate avg block response time over last 100 blocks to be used for IBD tuning
         // start at a higher number so that we don't start jamming IBD when we restart a node sync
-        static double avgResponseTime = 5;
-        static uint8_t blockRange = 20;
-        if (avgResponseTime > 0)
-            avgResponseTime -= (avgResponseTime / blockRange);
-        avgResponseTime += nResponseTime / blockRange;
-        if (avgResponseTime < 0.2)
+        static uint8_t blockRange = 50;
+        if (pnode->nAvgBlkResponseTime < 0)
+            pnode->nAvgBlkResponseTime = 2.0;
+        if (pnode->nAvgBlkResponseTime > 0)
+            pnode->nAvgBlkResponseTime -= (pnode->nAvgBlkResponseTime / blockRange);
+        pnode->nAvgBlkResponseTime += nResponseTime / blockRange;
+
+        if (pnode->nAvgBlkResponseTime < 0.2)
         {
-            MAX_BLOCKS_IN_TRANSIT_PER_PEER = 32;
+            pnode->nMaxBlocksInTransitPerPeer = 96;
         }
-        else if (avgResponseTime < 0.5)
+        else if (pnode->nAvgBlkResponseTime < 0.5)
         {
-            MAX_BLOCKS_IN_TRANSIT_PER_PEER = 16;
+            pnode->nMaxBlocksInTransitPerPeer = 80;
         }
-        else if (avgResponseTime < 0.9)
+        else if (pnode->nAvgBlkResponseTime < 0.9)
         {
-            MAX_BLOCKS_IN_TRANSIT_PER_PEER = 8;
+            pnode->nMaxBlocksInTransitPerPeer = 64;
         }
-        else if (avgResponseTime < 1.4)
+        else if (pnode->nAvgBlkResponseTime < 1.4)
         {
-            MAX_BLOCKS_IN_TRANSIT_PER_PEER = 4;
+            pnode->nMaxBlocksInTransitPerPeer = 48;
         }
-        else if (avgResponseTime < 2.0)
+        else if (pnode->nAvgBlkResponseTime < 2.0)
         {
-            MAX_BLOCKS_IN_TRANSIT_PER_PEER = 2;
+            pnode->nMaxBlocksInTransitPerPeer = 32;
         }
         else
         {
-            MAX_BLOCKS_IN_TRANSIT_PER_PEER = 1;
+            pnode->nMaxBlocksInTransitPerPeer = 16;
         }
 
+        CNodeState *state = State(pnode->id);
+
+        // if there are no blocks in flight then ask for a few more blocks
+        if (state->nBlocksInFlight <= 0)
+            pnode->nMaxBlocksInTransitPerPeer += 6;
+
         LOG(THIN, "Received block %s in %.2f seconds\n", hash.ToString(), nResponseTime);
-        LOG(THIN, "Average block response time is %.2f seconds\n", avgResponseTime);
+        LOG(THIN, "Average block response time is %.2f seconds\n", pnode->nAvgBlkResponseTime);
         if (maxBlocksInTransitPerPeer.value != 0)
         {
-            MAX_BLOCKS_IN_TRANSIT_PER_PEER = maxBlocksInTransitPerPeer.value;
+            pnode->nMaxBlocksInTransitPerPeer = maxBlocksInTransitPerPeer.value;
         }
         if (blockDownloadWindow.value != 0)
         {
             BLOCK_DOWNLOAD_WINDOW = blockDownloadWindow.value;
         }
         LOG(THIN, "BLOCK_DOWNLOAD_WINDOW is %d MAX_BLOCKS_IN_TRANSIT_PER_PEER is %d\n", BLOCK_DOWNLOAD_WINDOW,
-            MAX_BLOCKS_IN_TRANSIT_PER_PEER);
+            pnode->nMaxBlocksInTransitPerPeer);
 
         if (IsChainNearlySyncd())
         {
@@ -391,7 +399,6 @@ bool MarkBlockAsReceived(const uint256 &hash)
             }
         }
         // BUIP010 Xtreme Thinblocks: end section
-        CNodeState *state = State(itInFlight->second.first);
         state->nBlocksInFlightValidHeaders -= itInFlight->second.second->fValidatedHeaders;
         if (state->nBlocksInFlightValidHeaders == 0 && itInFlight->second.second->fValidatedHeaders)
         {
@@ -4154,7 +4161,7 @@ bool ProcessNewBlock(CValidationState &state,
     {
         LOCK(cs_main);
         uint256 hash = pblock->GetHash();
-        bool fRequested = MarkBlockAsReceived(hash);
+        bool fRequested = MarkBlockAsReceived(hash, pfrom);
         fRequested |= fForceProcessing;
         if (!checked)
         {
@@ -7535,10 +7542,11 @@ bool SendMessages(CNode *pto)
         //
         // Message: getdata (blocks)
         //
-        if (!pto->fDisconnect && !pto->fClient && state.nBlocksInFlight < (int)MAX_BLOCKS_IN_TRANSIT_PER_PEER)
+        if (!pto->fDisconnect && !pto->fClient && state.nBlocksInFlight < (int)pto->nMaxBlocksInTransitPerPeer)
         {
             std::vector<CBlockIndex *> vToDownload;
-            FindNextBlocksToDownload(pto->GetId(), MAX_BLOCKS_IN_TRANSIT_PER_PEER - state.nBlocksInFlight, vToDownload);
+            FindNextBlocksToDownload(pto->GetId(),
+                pto->nMaxBlocksInTransitPerPeer - state.nBlocksInFlight, vToDownload);
             // LOG(REQ, "IBD AskFor %d blocks from peer=%s\n", vToDownload.size(), pto->GetLogName());
             std::vector<CInv> vGetBlocks;
             for (CBlockIndex *pindex : vToDownload)

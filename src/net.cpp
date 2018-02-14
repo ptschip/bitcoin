@@ -2825,6 +2825,8 @@ CNode::CNode(SOCKET hSocketIn, const CAddress &addrIn, const std::string &addrNa
     nXthinBloomfilterSize = 0;
     addrFromPort = 0; // BU
     nLocalThinBlockBytes = 0;
+    nAvgBlkResponseTime - -1.0;
+    nMaxBlocksInTransitPerPeer = 16;
 
     nMisbehavior = 0;
     fShouldBan = false;
