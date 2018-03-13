@@ -6732,7 +6732,6 @@ bool ProcessMessage(CNode *pfrom, std::string strCommand, CDataStream &vRecv, in
 
 bool ProcessMessages(CNode *pfrom)
 {
-    AssertLockHeld(pfrom->cs_vRecvMsg);
     const CChainParams &chainparams = Params();
     // if (fDebug)
     //    LOGA("%s(%u messages)\n", __func__, pfrom->vRecvMsg.size());
@@ -6754,27 +6753,39 @@ bool ProcessMessages(CNode *pfrom)
     if (!pfrom->vRecvGetData.empty())
         return fOk;
 
-    std::deque<CNetMessage>::iterator it = pfrom->vRecvMsg.begin();
-    while (!pfrom->fDisconnect && it != pfrom->vRecvMsg.end())
+    while (!pfrom->fDisconnect)
     {
         // Don't bother if send buffer is too full to respond anyway
         if (pfrom->nSendSize >= SendBufferSize())
+        {
             break;
+        }
 
         // get next message
-        CNetMessage &msg = *it;
+        std::vector<CNetMessage> vMsg;
+        {
+            LOCK(pfrom->cs_vRecvMsg);
+
+            // end, if an incomplete message is found
+            if (!pfrom->vRecvMsg.front().complete())
+                break;
+
+            if(!pfrom->vRecvMsg.empty())
+            {
+               if (pfrom->fDisconnect)
+                   break;
+               vMsg.emplace_back(std::move(pfrom->vRecvMsg.front()));
+               pfrom->vRecvMsg.pop_front();
+            }
+        }
+        if (vMsg.empty())
+            break;
+        CNetMessage &msg = vMsg.front();
 
         // if (fDebug)
         //    LOGA("%s(message %u msgsz, %u bytes, complete:%s)\n", __func__,
         //            msg.hdr.nMessageSize, msg.vRecv.size(),
         //            msg.complete() ? "Y" : "N");
-
-        // end, if an incomplete message is found
-        if (!msg.complete())
-            break;
-
-        // at this point, any failure means we can delete the current message
-        it++;
 
         // Scan for message start
         if (memcmp(msg.hdr.pchMessageStart, pfrom->GetMagic(chainparams), MESSAGE_START_SIZE) != 0)
@@ -6858,10 +6869,6 @@ bool ProcessMessages(CNode *pfrom)
 
         break;
     }
-
-    // In case the connection got shut down, its receive buffer was wiped
-    if (!pfrom->fDisconnect)
-        pfrom->vRecvMsg.erase(pfrom->vRecvMsg.begin(), it);
 
     return fOk;
 }

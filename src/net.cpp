@@ -1200,8 +1200,10 @@ void ThreadSocketHandler()
                     }
                 }
                 {
-                    TRY_LOCK(pnode->cs_vRecvMsg, lockRecv);
-                    if (lockRecv && (pnode->vRecvMsg.empty() || !pnode->vRecvMsg.front().complete() ||
+                    LOCK(pnode->cs_vRecvMsg);
+                    if ((pnode->vRecvMsg.empty() || !pnode->vRecvMsg.front().complete() ||
+                    //TRY_LOCK(pnode->cs_vRecvMsg, lockRecv);
+                    //if (lockRecv && (pnode->vRecvMsg.empty() || !pnode->vRecvMsg.front().complete() ||
                                         pnode->GetTotalRecvSize() <= ReceiveFloodSize()))
                         FD_SET(hSocket, &fdsetRecv);
                 }
@@ -1261,7 +1263,9 @@ void ThreadSocketHandler()
                 continue;
             if (FD_ISSET(hSocket, &fdsetRecv) || FD_ISSET(hSocket, &fdsetError))
             {
-                TRY_LOCK(pnode->cs_vRecvMsg, lockRecv);
+                LOCK(pnode->cs_vRecvMsg);
+                bool lockRecv = true;
+                //TRY_LOCK(pnode->cs_vRecvMsg, lockRecv);
                 int64_t amt2Recv = receiveShaper.available(RECV_SHAPER_MIN_FRAG);
                 if (!lockRecv)
                 {
@@ -1369,8 +1373,8 @@ void ThreadSocketHandler()
         }
 
         // BU: Nothing happened even though select did not block.  So slow us down.
-        if (progress == 0 && fAquiredAllRecvLocks)
-            MilliSleep(5);
+  //      if (progress == 0 && fAquiredAllRecvLocks)
+   //         MilliSleep(5);
     }
 }
 
@@ -2127,27 +2131,13 @@ void ThreadMessageHandler()
 
             // Receive messages
             {
-                TRY_LOCK(pnode->cs_vRecvMsg, lockRecv);
-                if (lockRecv)
-                {
-                    if (!g_signals.ProcessMessages(pnode))
-                        pnode->fDisconnect = true;
-
-                    if (pnode->nSendSize < SendBufferSize())
-                    {
-                        if (!pnode->vRecvGetData.empty() || (!pnode->vRecvMsg.empty() && pnode->vRecvMsg[0].complete()))
-                        {
-                            fSleep = false;
-                        }
-                    }
-                }
+                if (!g_signals.ProcessMessages(pnode))
+                    pnode->fDisconnect = true;
             }
             boost::this_thread::interruption_point();
 
             // Send messages
             {
-                // TRY_LOCK(pnode->cs_vSend, lockSend);
-                //  if (lockSend)
                 g_signals.SendMessages(pnode);
             }
             boost::this_thread::interruption_point();
