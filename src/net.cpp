@@ -1200,11 +1200,11 @@ void ThreadSocketHandler()
                     }
                 }
                 {
-                    LOCK(pnode->cs_vRecvMsg);
-                    if ((pnode->vRecvMsg.empty() || !pnode->vRecvMsg.front().complete() ||
+//                    LOCK(pnode->cs_vRecvMsg);
+//                    if ((pnode->vRecvMsg.empty() || !pnode->vRecvMsg.front().complete() ||
                     //TRY_LOCK(pnode->cs_vRecvMsg, lockRecv);
                     //if (lockRecv && (pnode->vRecvMsg.empty() || !pnode->vRecvMsg.front().complete() ||
-                                        pnode->GetTotalRecvSize() <= ReceiveFloodSize()))
+//                                        pnode->GetTotalRecvSize() <= ReceiveFloodSize()))
                         FD_SET(hSocket, &fdsetRecv);
                 }
             }
@@ -1263,8 +1263,13 @@ void ThreadSocketHandler()
                 continue;
             if (FD_ISSET(hSocket, &fdsetRecv) || FD_ISSET(hSocket, &fdsetError))
             {
-                LOCK(pnode->cs_vRecvMsg);
-                bool lockRecv = true;
+                TRY_LOCK(pnode->cs_vRecvMsg, lockRecv);
+                //LOCK(pnode->cs_vRecvMsg);
+               // bool lockRecv = true;
+
+                if (lockRecv && pnode->GetTotalRecvSize() > ReceiveFloodSize() && pnode->vRecvMsg.front().complete())
+                    continue;
+
                 //TRY_LOCK(pnode->cs_vRecvMsg, lockRecv);
                 int64_t amt2Recv = receiveShaper.available(RECV_SHAPER_MIN_FRAG);
                 if (!lockRecv)
@@ -1372,9 +1377,10 @@ void ThreadSocketHandler()
                 pnode->Release();
         }
 
-        // BU: Nothing happened even though select did not block.  So slow us down.
-  //      if (progress == 0 && fAquiredAllRecvLocks)
-   //         MilliSleep(5);
+        // Nothing happened even though select did not block so slow us down.  This would only be triggered
+        // when rate limiting is set to ON.
+        if (progress == 0 && fAquiredAllRecvLocks)
+            MilliSleep(5);
     }
 }
 
