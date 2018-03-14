@@ -144,7 +144,7 @@ void CRequestManager::cleanup(OdMap::iterator &itemIt)
 }
 
 // Get this object from somewhere, asynchronously.
-void CRequestManager::AskFor(const CInv &obj, CNode *from, unsigned int priority)
+void CRequestManager::AskFor(const CInv &obj, CNode *from, unsigned int priority, int64_t nLastRequestTime)
 {
     // LOG(REQ, "ReqMgr: Ask for %s.\n", obj.ToString().c_str());
 
@@ -179,10 +179,13 @@ void CRequestManager::AskFor(const CInv &obj, CNode *from, unsigned int priority
         // if (result.second)  // means this was inserted rather than already existed
         // { } nothing to do
         data.priority = max(priority, data.priority);
-        if (data.AddSource(from))
+        if (nLastRequestTime > 0)
+            data.lastRequestTime = nLastRequestTime;
+        else if (data.AddSource(from))
         {
             // LOG(BLK, "%s available at %s\n", obj.ToString().c_str(), from->addrName.c_str());
         }
+
     }
     else
     {
@@ -191,7 +194,7 @@ void CRequestManager::AskFor(const CInv &obj, CNode *from, unsigned int priority
 }
 
 // Get these objects from somewhere, asynchronously.
-void CRequestManager::AskFor(const std::vector<CInv> &objArray, CNode *from, unsigned int priority)
+void CRequestManager::AskFor(const std::vector<CInv> &objArray, CNode *from, unsigned int priority, int64_t nLastRequestTime)
 {
     // In order to maintain locking order, we must lock cs_objDownloader first and before possibly taking cs_vNodes.
     // Also, locking here prevents anyone from asking again for any of these objects again before we've notified the
@@ -211,13 +214,31 @@ void CRequestManager::AskForDuringIBD(const std::vector<CInv> &objArray, CNode *
 
     // This is block and peer that was selected in FindNextBlocksToDownload() so we want to add it as a block
     // source first so that it gets requested first.
+                for (auto &inv : objArray)
+                {
+                    MarkBlockAsInFlight(from->GetId(), inv.hash, Params().GetConsensus());
+                }
+                from->PushMessage(NetMsgType::GETDATA, objArray);
+                LOG(REQ, "Sent batched request with %d blocks to node %s\n", objArray.size(),
+                    from->GetLogName());
+
     LOCK(cs_objDownloader);
-    AskFor(objArray, from, priority);
+    AskFor(objArray, from, priority, GetTime()); // specify that we already asked for this by passing the time.
 
     // Add the other peers as potential sources in the event the RequestManager needs to make a re-request
     // for this block. Only add NETWORK nodes that have block availability.
-    LOCK(cs_vNodes);
-    for (CNode *pnode : vNodes)
+                std::vector<CNode *> vNodesCopy;
+                {
+                    LOCK(cs_vNodes);
+                    vNodesCopy = vNodes;
+                    for (CNode *pnode : vNodes)
+                    {
+                        pnode->AddRef();
+                    }
+                }
+
+
+    for (CNode *pnode : vNodesCopy)
     {
         // skip the peer we added above
         if (pnode == from)
@@ -240,6 +261,14 @@ void CRequestManager::AskForDuringIBD(const std::vector<CInv> &objArray, CNode *
             }
         }
     }
+
+                // release refs
+                {
+                    LOCK(cs_vNodes);
+                    for (CNode *pnode : vNodesCopy)
+                        pnode->Release();
+                }
+
 }
 
 bool CRequestManager::AlreadyAskedFor(const uint256 &hash)

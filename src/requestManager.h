@@ -133,10 +133,10 @@ public:
     CRequestManager();
 
     // Get this object from somewhere, asynchronously.
-    void AskFor(const CInv &obj, CNode *from, unsigned int priority = 0);
+    void AskFor(const CInv &obj, CNode *from, unsigned int priority = 0, int64_t nLastRequestTime = 0);
 
     // Get these objects from somewhere, asynchronously.
-    void AskFor(const std::vector<CInv> &objArray, CNode *from, unsigned int priority = 0);
+    void AskFor(const std::vector<CInv> &objArray, CNode *from, unsigned int priority = 0, int64_t nLastRequestTime = 0);
 
     // Get these objects from somewhere, asynchronously during IBD. During IBD we must assume every peer connected
     // can give us the blocks we need and so we tell the request manager about these sources. Otherwise the request

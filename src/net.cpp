@@ -68,6 +68,7 @@
 #endif
 
 extern std::atomic<bool> fRescan;
+static std::atomic<bool> fMoreWork{false};
 
 using namespace std;
 
@@ -613,6 +614,7 @@ bool CNode::ReceiveMsgBytes(const char *pch, unsigned int nBytes)
             // BU: end
             msg.nTime = GetTimeMicros();
             messageHandlerCondition.notify_one();
+            fMoreWork.store(true);
         }
     }
 
@@ -1160,6 +1162,7 @@ void ThreadSocketHandler()
             setSocket.insert(hListenSocket.socket);
         }
 
+        vector<CNode *> vNodesToCheck;
         {
             LOCK(cs_vNodes);
             for (CNode *pnode : vNodes)
@@ -1196,17 +1199,14 @@ void ThreadSocketHandler()
                     if (lockSend && !pnode->vSendMsg.empty())
                     {
                         FD_SET(hSocket, &fdsetSend);
+                        vNodesToCheck.emplace_back(pnode);
+                        pnode->AddRef();
                         continue;
                     }
                 }
-                {
-//                    LOCK(pnode->cs_vRecvMsg);
-//                    if ((pnode->vRecvMsg.empty() || !pnode->vRecvMsg.front().complete() ||
-                    //TRY_LOCK(pnode->cs_vRecvMsg, lockRecv);
-                    //if (lockRecv && (pnode->vRecvMsg.empty() || !pnode->vRecvMsg.front().complete() ||
-//                                        pnode->GetTotalRecvSize() <= ReceiveFloodSize()))
-                        FD_SET(hSocket, &fdsetRecv);
-                }
+                FD_SET(hSocket, &fdsetRecv);
+                vNodesToCheck.emplace_back(pnode);
+                pnode->AddRef();
             }
         }
 
@@ -1242,15 +1242,7 @@ void ThreadSocketHandler()
         //
         // Service each socket
         //
-        vector<CNode *> vNodesCopy;
-        {
-            LOCK(cs_vNodes);
-            vNodesCopy = vNodes;
-            for (CNode *pnode : vNodesCopy)
-                pnode->AddRef();
-        }
-
-        for (CNode *pnode : vNodesCopy)
+        for (CNode *pnode : vNodesToCheck)
         {
             boost::this_thread::interruption_point();
 
@@ -1263,14 +1255,12 @@ void ThreadSocketHandler()
                 continue;
             if (FD_ISSET(hSocket, &fdsetRecv) || FD_ISSET(hSocket, &fdsetError))
             {
-                TRY_LOCK(pnode->cs_vRecvMsg, lockRecv);
-                //LOCK(pnode->cs_vRecvMsg);
-               // bool lockRecv = true;
+                LOCK(pnode->cs_vRecvMsg);
+                bool lockRecv = true;
 
                 if (lockRecv && pnode->GetTotalRecvSize() > ReceiveFloodSize() && pnode->vRecvMsg.front().complete())
                     continue;
 
-                //TRY_LOCK(pnode->cs_vRecvMsg, lockRecv);
                 int64_t amt2Recv = receiveShaper.available(RECV_SHAPER_MIN_FRAG);
                 if (!lockRecv)
                 {
@@ -1373,7 +1363,7 @@ void ThreadSocketHandler()
         }
         {
             LOCK(cs_vNodes);
-            for (CNode *pnode : vNodesCopy)
+            for (CNode *pnode : vNodesToCheck)
                 pnode->Release();
         }
 
@@ -2101,10 +2091,10 @@ void ThreadMessageHandler()
     boost::mutex condition_mutex;
     boost::unique_lock<boost::mutex> lock(condition_mutex);
 
-    // SetThreadPriority(THREAD_PRIORITY_BELOW_NORMAL);
     while (true)
     {
-        requester.SendRequests(); // BU send out any requests for tx or blks that I don't know about yet
+        fMoreWork.store(false);
+        bool fCheckRqstManager = false;
 
         vector<CNode *> vNodesCopy;
         {
@@ -2128,8 +2118,6 @@ void ThreadMessageHandler()
             }
         }
 
-        bool fSleep = true;
-
         for (CNode *pnode : vNodesCopy)
         {
             if (pnode->fDisconnect)
@@ -2144,7 +2132,10 @@ void ThreadMessageHandler()
 
             // Send messages
             {
-                g_signals.SendMessages(pnode);
+                if(!g_signals.SendMessages(pnode))
+                    fMoreWork.store(true); // we didn't get the locks we needed but there may be messages to send
+                else
+                    fCheckRqstManager = true;
             }
             boost::this_thread::interruption_point();
         }
@@ -2155,9 +2146,14 @@ void ThreadMessageHandler()
                 pnode->Release();
         }
 
-        if (fSleep)
+        // Send requests for blks and txns that may have been put into the request manager from the above
+        // iteration of SendMessages(). We want to do this before the potential timed_wait below.
+        //if (fCheckRqstManager)
+            requester.SendRequests();
+
+        if (!fMoreWork.load())
             messageHandlerCondition.timed_wait(
-                lock, boost::posix_time::microsec_clock::universal_time() + boost::posix_time::milliseconds(50));
+                lock, boost::posix_time::microsec_clock::universal_time() + boost::posix_time::milliseconds(100));
     }
 }
 

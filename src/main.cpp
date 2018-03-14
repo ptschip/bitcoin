@@ -6954,13 +6954,13 @@ bool SendMessages(CNode *pto)
         if (!lockMain)
         {
             LOG(NET, "skipping SendMessages to %s, cs_main is locked\n", pto->addr.ToString());
-            return true;
+            return false;
         }
         TRY_LOCK(pto->cs_vSend, lockSend);
         if (!lockSend)
         {
             LOG(NET, "skipping SendMessages to %s, pto->cs_vSend is locked\n", pto->addr.ToString());
-            return true;
+            return false;
         }
 
         // Address refresh broadcast
