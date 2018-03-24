@@ -400,17 +400,13 @@ CNodeRequestData::CNodeRequestData(CNode *n)
     desirability -= latency;
 }
 
-// requires cs_objDownloader
+// requires cs_objDownloader and also a node reference to be maintained.
 bool CUnknownObj::AddSource(CNode *from)
 {
     // node is not in the request list
     if (std::find_if(availableFrom.begin(), availableFrom.end(), MatchCNodeRequestData(from)) == availableFrom.end())
     {
         LOG(REQ, "AddSource %s is available at %s.\n", obj.ToString(), from->GetLogName());
-        {
-            LOCK(cs_vNodes); // This lock is needed to ensure that AddRef happens atomically
-            from->AddRef();
-        }
         CNodeRequestData req(from);
         for (ObjectSourceList::iterator i = availableFrom.begin(); i != availableFrom.end(); ++i)
         {
@@ -548,6 +544,7 @@ void CRequestManager::ResetLastRequestTime(const uint256 &hash)
     }
 }
 
+// requires node reference to be maintained.
 void CRequestManager::SendRequests()
 {
     int64_t now = 0;
@@ -606,10 +603,8 @@ void CRequestManager::SendRequests()
                         // Do not request from this node if it was disconnected
                         if (next.node->fDisconnect)
                         {
-                            LOCK(cs_vNodes);
                             LOG(REQ, "ReqMgr: %s removed block ref to %s count %d (on disconnect).\n",
                                 item.obj.ToString(), next.node->GetLogName(), next.node->GetRefCount());
-                            next.node->Release();
                             next.node = nullptr; // force the loop to get another node
                         }
                     }
@@ -667,10 +662,8 @@ void CRequestManager::SendRequests()
 
                     // Instead we'll forget about it -- the node is already popped of of the available list so now we'll
                     // release our reference.
-                    LOCK(cs_vNodes);
                     // LOG(REQ, "ReqMgr: %s removed block ref to %d count %d\n", obj.ToString(),
                     //     next.node->GetId(), next.node->GetRefCount());
-                    next.node->Release();
                     next.node = nullptr;
                 }
                 else
@@ -758,10 +751,8 @@ void CRequestManager::SendRequests()
                         {
                             if (next.node->fDisconnect) // Node was disconnected so we can't request from it
                             {
-                                LOCK(cs_vNodes);
                                 LOG(REQ, "ReqMgr: %s removed tx ref to %d count %d (on disconnect).\n",
                                     item.obj.ToString(), next.node->GetId(), next.node->GetRefCount());
-                                next.node->Release();
                                 next.node = nullptr; // force the loop to get another node
                             }
                         }
