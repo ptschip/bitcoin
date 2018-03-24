@@ -403,17 +403,13 @@ CNodeRequestData::CNodeRequestData(CNode *n)
     desirability -= latency;
 }
 
-// requires cs_objDownloader
+// requires cs_objDownloader and also a node reference to be maintained.
 bool CUnknownObj::AddSource(CNode *from)
 {
     // node is not in the request list
     if (std::find_if(availableFrom.begin(), availableFrom.end(), MatchCNodeRequestData(from)) == availableFrom.end())
     {
         LOG(REQ, "AddSource %s is available at %s.\n", obj.ToString(), from->GetLogName());
-        {
-            LOCK(cs_vNodes); // This lock is needed to ensure that AddRef happens atomically
-            from->AddRef();
-        }
         CNodeRequestData req(from);
         for (ObjectSourceList::iterator i = availableFrom.begin(); i != availableFrom.end(); ++i)
         {
@@ -551,6 +547,7 @@ void CRequestManager::ResetLastRequestTime(const uint256 &hash)
     }
 }
 
+// requires node reference to be maintained.
 void CRequestManager::SendRequests()
 {
     int64_t now = 0;
