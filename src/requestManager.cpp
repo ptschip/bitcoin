@@ -694,7 +694,6 @@ void CRequestManager::SendRequests()
         {
             for (auto iter : mapBatchBlockRequests)
             {
-                LOCK(cs_main);
                 for (auto &inv : iter.second)
                 {
                     MarkBlockAsInFlight(iter.first->GetId(), inv.hash, Params().GetConsensus());
