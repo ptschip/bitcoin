@@ -48,14 +48,16 @@ public:
     int requestCount;
     int desirability;
     CNode *node;
+    NodeId id;
     CNodeRequestData(CNode *);
 
-    CNodeRequestData() : requestCount(0), desirability(0), node(NULL) {}
+    CNodeRequestData() : requestCount(0), desirability(0), node(NULL), id(-1) {}
     void clear(void)
     {
         requestCount = 0;
         node = 0;
         desirability = 0;
+        id = -1;
     }
     bool operator<(const CNodeRequestData &rhs) const { return desirability < rhs.desirability; }
 };
