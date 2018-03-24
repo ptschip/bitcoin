@@ -379,6 +379,7 @@ CNodeRequestData::CNodeRequestData(CNode *n)
 {
     assert(n);
     node = n;
+    id = n->GetId();
     requestCount = 0;
     desirability = 0;
 
