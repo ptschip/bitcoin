@@ -706,11 +706,6 @@ void CRequestManager::SendRequests()
         }
         ENTER_CRITICAL_SECTION(cs_objDownloader);
 
-        LOCK(cs_vNodes);
-        for (auto iter : mapBatchBlockRequests)
-        {
-            iter.first->Release();
-        }
         mapBatchBlockRequests.clear();
     }
 
