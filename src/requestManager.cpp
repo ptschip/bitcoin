@@ -694,9 +694,12 @@ void CRequestManager::SendRequests()
         {
             for (auto iter : mapBatchBlockRequests)
             {
-                for (auto &inv : iter.second)
                 {
-                    MarkBlockAsInFlight(iter.first->GetId(), inv.hash, Params().GetConsensus());
+                    LOCK(cs_main);
+                    for (auto &inv : iter.second)
+                    {
+                        MarkBlockAsInFlight(iter.first->GetId(), inv.hash, Params().GetConsensus());
+                    }
                 }
                 iter.first->PushMessage(NetMsgType::GETDATA, iter.second);
                 LOG(REQ, "Sent batched request with %d blocks to node %s\n", iter.second.size(),
