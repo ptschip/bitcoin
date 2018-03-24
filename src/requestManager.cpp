@@ -553,8 +553,7 @@ void CRequestManager::SendRequests()
 
     // TODO: if a node goes offline, rerequest txns from someone else and cleanup references right away
     LOCK(cs_objDownloader);
-    if (sendBlkIter == mapBlkInfo.end())
-        sendBlkIter = mapBlkInfo.begin();
+    sendBlkIter = mapBlkInfo.begin();
 
     // Modify retry interval. If we're doing IBD or if Traffic Shaping is ON we want to have a longer interval because
     // those blocks and txns can take much longer to download.
@@ -716,8 +715,7 @@ void CRequestManager::SendRequests()
     }
 
     // Get Transactions
-    if (sendIter == mapTxnInfo.end())
-        sendIter = mapTxnInfo.begin();
+    sendIter = mapTxnInfo.begin();
     while ((sendIter != mapTxnInfo.end()) && requestPacer.try_leak(1))
     {
         now = GetTimeMicros();

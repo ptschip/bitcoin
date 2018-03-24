@@ -2149,6 +2149,9 @@ void ThreadMessageHandler()
             boost::this_thread::interruption_point();
         }
 
+        // Send all requests from all nodes
+        requester.SendRequests();
+
         {
             LOCK(cs_vNodes);
             for (CNode *pnode : vNodesCopy)
