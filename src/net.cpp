@@ -1362,11 +1362,10 @@ void ThreadSocketHandler()
                 }
             }
         }
-        {
-            LOCK(cs_vNodes);
-            for (CNode *pnode : vNodesCopy)
-                pnode->Release();
-        }
+
+        // release all references
+        for (CNode *pnode : vNodesCopy)
+            pnode->Release();
 
         // BU: Nothing happened even though select did not block.  So slow us down.
         if (progress == 0 && fAquiredAllRecvLocks)
@@ -2149,11 +2148,9 @@ void ThreadMessageHandler()
             boost::this_thread::interruption_point();
         }
 
-        {
-            LOCK(cs_vNodes);
-            for (CNode *pnode : vNodesCopy)
-                pnode->Release();
-        }
+        // release node refs
+        for (CNode *pnode : vNodesCopy)
+             pnode->Release();
 
         // From the request manager, make requests for transactions and blocks. We do this before potentially
         // sleeping in the step below so as to allow requests to return during the sleep time.
