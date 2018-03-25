@@ -120,14 +120,10 @@ void CRequestManager::cleanup(OdMap::iterator &itemIt)
     pendingTxns -= 1;
 
     // remove all the source nodes
-    for (CUnknownObj::ObjectSourceList::iterator i = item.availableFrom.begin(); i != item.availableFrom.end(); ++i)
+   // for (CUnknownObj::ObjectSourceList::iterator i = item.availableFrom.begin(); i != item.availableFrom.end(); ++i)
+    for (auto &i : item.availableFrom)
     {
-        CNode *node = i->node;
-        if (node)
-        {
-            i->clear();
-            // LOG(REQ, "ReqMgr: %s cleanup - removed ref to nodeid %d\n", item.obj.ToString(), node->GetId());
-        }
+        i.clear();
     }
     item.availableFrom.clear();
 
@@ -372,11 +368,10 @@ void CRequestManager::Rejected(const CInv &obj, CNode *from, unsigned char reaso
     }
 }
 
-CNodeRequestData::CNodeRequestData(CNode *n)
+CNodeRequestData::CNodeRequestData(CNode *pnode)
 {
-    assert(n);
-    node = n;
-    id = n->GetId();
+    assert(pnode);
+    id = pnode->GetId();
     requestCount = 0;
     desirability = 0;
 
@@ -385,13 +380,13 @@ CNodeRequestData::CNodeRequestData(CNode *n)
     // Calculate how much we like this node:
 
     // Prefer thin block nodes over low latency ones when the chain is syncd
-    if (node->ThinBlockCapable() && IsChainNearlySyncd())
+    if (pnode->ThinBlockCapable() && IsChainNearlySyncd())
     {
         desirability += MaxLatency;
     }
 
     // The bigger the latency (in microseconds), the less we want to request from this node
-    int latency = node->txReqLatency.GetTotal().get_int();
+    int latency = pnode->txReqLatency.GetTotal().get_int();
     // data has never been requested from this node.  Should we encourage investigation into whether this node is fast,
     // or stick with nodes that we do have data on?
     if (latency == 0)
@@ -407,7 +402,7 @@ CNodeRequestData::CNodeRequestData(CNode *n)
 bool CUnknownObj::AddSource(CNode *from)
 {
     // node is not in the request list
-    if (std::find_if(availableFrom.begin(), availableFrom.end(), MatchCNodeRequestData(from)) == availableFrom.end())
+    if (std::find_if(availableFrom.begin(), availableFrom.end(), MatchCNodeRequestData(from->GetId())) == availableFrom.end())
     {
         LOG(REQ, "AddSource %s is available at %s.\n", obj.ToString(), from->GetLogName());
         CNodeRequestData req(from);
@@ -605,7 +600,7 @@ void CRequestManager::SendRequests()
                     if (next.id != -1)
                     {
                         // Do not request from this node if it was disconnected
-                        if (next.node->fDisconnect)
+                        if (connmgr->FindNodeFromId(next.id).get()->fDisconnect)
                         {
                             LOG(REQ, "ReqMgr: %s removed block ref to nodeid %d (on disconnect).\n",
                                 item.obj.ToString(), next.id);
@@ -750,7 +745,7 @@ void CRequestManager::SendRequests()
                         item.availableFrom.pop_front();
                         if (next.id != -1)
                         {
-                            if (next.node->fDisconnect) // Node was disconnected so we can't request from it
+                            if (connmgr->FindNodeFromId(next.id).get()->fDisconnect) // Node was disconnected so we can't request from it
                             {
                                 LOG(REQ, "ReqMgr: %s removed tx ref to %d (on disconnect).\n",
                                     item.obj.ToString(), next.id);

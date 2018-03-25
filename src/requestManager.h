@@ -48,15 +48,13 @@ class CNodeRequestData
 public:
     int requestCount;
     int desirability;
-    CNode *node;
     NodeId id;
     CNodeRequestData(CNode *);
 
-    CNodeRequestData() : requestCount(0), desirability(0), node(NULL), id(-1) {}
+    CNodeRequestData() : requestCount(0), desirability(0), id(-1) {}
     void clear(void)
     {
         requestCount = 0;
-        node = 0;
         desirability = 0;
         id = -1;
     }
@@ -65,9 +63,9 @@ public:
 
 struct MatchCNodeRequestData // Compare a CNodeRequestData object to a node
 {
-    CNode *node;
-    MatchCNodeRequestData(CNode *n) : node(n){};
-    inline bool operator()(const CNodeRequestData &nd) const { return nd.node == node; }
+    NodeId id;
+    MatchCNodeRequestData(NodeId n) : id(n){};
+    inline bool operator()(const CNodeRequestData &nd) const { return nd.id == id; }
 };
 
 class CUnknownObj
