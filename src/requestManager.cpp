@@ -6,6 +6,7 @@
 #include "chain.h"
 #include "chainparams.h"
 #include "clientversion.h"
+#include "connmgr.h"
 #include "consensus/consensus.h"
 #include "consensus/params.h"
 #include "consensus/validation.h"
@@ -112,8 +113,6 @@ void CRequestManager::cleanup(OdMap::iterator &itemIt)
     droppedTxns -= (item.outstandingReqs - 1);
     pendingTxns -= 1;
 
-    LOCK(cs_vNodes);
-
     // remove all the source nodes
     for (CUnknownObj::ObjectSourceList::iterator i = item.availableFrom.begin(); i != item.availableFrom.end(); ++i)
     {
@@ -121,9 +120,7 @@ void CRequestManager::cleanup(OdMap::iterator &itemIt)
         if (node)
         {
             i->clear();
-            // LOG(REQ, "ReqMgr: %s cleanup - removed ref to %d count %d.\n", item.obj.ToString(), node->GetId(),
-            //    node->GetRefCount());
-            node->Release();
+            // LOG(REQ, "ReqMgr: %s cleanup - removed ref to nodeid %d\n", item.obj.ToString(), node->GetId());
         }
     }
     item.availableFrom.clear();
@@ -569,7 +566,7 @@ void CRequestManager::SendRequests()
     // asking for one at time. We can do this because there will be no XTHIN requests possible during
     // this time.
     bool fBatchBlockRequests = IsInitialBlockDownload();
-    std::map<CNode *, std::vector<CInv> > mapBatchBlockRequests;
+    std::map<NodeId, std::vector<CInv> > mapBatchBlockRequests;
 
     // Batch any transaction reqeusts when possible. The process of batching and requesting batched transactions
     // is simlilar to batched block requests, however, we don't make the distinction of whether we're in the process
@@ -594,23 +591,23 @@ void CRequestManager::SendRequests()
             {
                 CNodeRequestData next;
                 // Go thru the availableFrom list, looking for the first node that isn't disconnected
-                while (!item.availableFrom.empty() && (next.node == nullptr))
+                while (!item.availableFrom.empty() && (next.id == -1))
                 {
                     next = item.availableFrom.front(); // Grab the next location where we can find this object.
                     item.availableFrom.pop_front();
-                    if (next.node != nullptr)
+                    if (next.id != -1)
                     {
                         // Do not request from this node if it was disconnected
                         if (next.node->fDisconnect)
                         {
-                            LOG(REQ, "ReqMgr: %s removed block ref to %s count %d (on disconnect).\n",
-                                item.obj.ToString(), next.node->GetLogName(), next.node->GetRefCount());
-                            next.node = nullptr; // force the loop to get another node
+                            LOG(REQ, "ReqMgr: %s removed block ref to nodeid %d (on disconnect).\n",
+                                item.obj.ToString(), next.id);
+                            next.id = -1; // force the loop to get another node
                         }
                     }
                 }
 
-                if (next.node != nullptr)
+                if (next.id != -1)
                 {
                     // If item.lastRequestTime is true then we've requested at least once and we'll try a re-request
                     if (item.lastRequestTime)
@@ -625,18 +622,12 @@ void CRequestManager::SendRequests()
 
                     if (fBatchBlockRequests)
                     {
-                        // Add a node ref if we haven't already added a map entry for this node.
-                        if (mapBatchBlockRequests.find(next.node) == mapBatchBlockRequests.end())
-                        {
-                            LOCK(cs_vNodes);
-                            next.node->AddRef();
-                        }
-                        mapBatchBlockRequests[next.node].emplace_back(obj);
+                        mapBatchBlockRequests[next.id].push_back(obj);
                     }
                     else
                     {
                         LEAVE_CRITICAL_SECTION(cs_objDownloader); // item and itemIter are now invalid
-                        bool reqblkResult = RequestBlock(next.node, obj);
+                        bool reqblkResult = RequestBlock(connmgr->FindNodeFromId(next.id).get(), obj);
                         ENTER_CRITICAL_SECTION(cs_objDownloader);
 
                         if (!reqblkResult)
@@ -662,9 +653,9 @@ void CRequestManager::SendRequests()
 
                     // Instead we'll forget about it -- the node is already popped of of the available list so now we'll
                     // release our reference.
-                    // LOG(REQ, "ReqMgr: %s removed block ref to %d count %d\n", obj.ToString(),
-                    //     next.node->GetId(), next.node->GetRefCount());
-                    next.node = nullptr;
+                    // LOG(REQ, "ReqMgr: %s removed block ref to %d\n", obj.ToString(),
+                    //     next.id);
+                    next.id = -1;
                 }
                 else
                 {
@@ -686,18 +677,18 @@ void CRequestManager::SendRequests()
     {
         LEAVE_CRITICAL_SECTION(cs_objDownloader);
         {
-            for (auto iter : mapBatchBlockRequests)
+            for (auto &iter : mapBatchBlockRequests)
             {
                 {
                     LOCK(cs_main);
                     for (auto &inv : iter.second)
                     {
-                        MarkBlockAsInFlight(iter.first->GetId(), inv.hash, Params().GetConsensus());
+                        MarkBlockAsInFlight(iter.first, inv.hash, Params().GetConsensus());
                     }
                 }
-                iter.first->PushMessage(NetMsgType::GETDATA, iter.second);
-                LOG(REQ, "Sent batched request with %d blocks to node %s\n", iter.second.size(),
-                    iter.first->GetLogName());
+                connmgr->FindNodeFromId(iter.first)->PushMessage(NetMsgType::GETDATA, iter.second);
+                LOG(REQ, "Sent batched request with %d blocks to nodeid %s\n", iter.second.size(),
+                    iter.first);
             }
         }
         ENTER_CRITICAL_SECTION(cs_objDownloader);
@@ -743,22 +734,22 @@ void CRequestManager::SendRequests()
                 {
                     CNodeRequestData next;
                     // Go thru the availableFrom list, looking for the first node that isn't disconnected
-                    while (!item.availableFrom.empty() && (next.node == nullptr))
+                    while (!item.availableFrom.empty() && (next.id == -1))
                     {
                         next = item.availableFrom.front(); // Grab the next location where we can find this object.
                         item.availableFrom.pop_front();
-                        if (next.node != nullptr)
+                        if (next.id != -1)
                         {
                             if (next.node->fDisconnect) // Node was disconnected so we can't request from it
                             {
-                                LOG(REQ, "ReqMgr: %s removed tx ref to %d count %d (on disconnect).\n",
-                                    item.obj.ToString(), next.node->GetId(), next.node->GetRefCount());
-                                next.node = nullptr; // force the loop to get another node
+                                LOG(REQ, "ReqMgr: %s removed tx ref to %d (on disconnect).\n",
+                                    item.obj.ToString(), next.id);
+                                next.id = -1; // force the loop to get another node
                             }
                         }
                     }
 
-                    if (next.node != nullptr)
+                    if (next.id != -1)
                     {
                         // This commented code skips requesting TX if the node is not synced. The request
                         // manager should not make this decision but rather the caller should not give us the TX.
@@ -767,30 +758,20 @@ void CRequestManager::SendRequests()
                             item.outstandingReqs++;
                             item.lastRequestTime = now;
 
-                            // Add a node ref if we haven't already added a map entry for this node.
-                            if (mapBatchTxnRequests.find(next.node) == mapBatchTxnRequests.end())
-                            {
-                                LOCK(cs_vNodes);
-                                next.node->AddRef();
-                            }
-                            mapBatchTxnRequests[next.node].emplace_back(item.obj);
+                            mapBatchTxnRequests[next.id].emplace_back(item.obj);
 
                             // If we have 1000 requests for this peer then send them right away.
-                            if (mapBatchTxnRequests[next.node].size() >= 1000)
+                            if (mapBatchTxnRequests[next.id].size() >= 1000)
                             {
                                 LEAVE_CRITICAL_SECTION(cs_objDownloader);
                                 {
-                                    next.node->PushMessage(NetMsgType::GETDATA, mapBatchTxnRequests[next.node]);
-                                    LOG(REQ, "Sent batched request with %d transations to node %s\n",
-                                        mapBatchTxnRequests[next.node].size(), next.node->GetLogName());
+                                    connmgr->FindNodeFromId(next.id)->PushMessage(NetMsgType::GETDATA, mapBatchTxnRequests[next.id]);
+                                    LOG(REQ, "Sent batched request with %d transations to node %d\n",
+                                        mapBatchTxnRequests[next.id].size(), next.id);
                                 }
                                 ENTER_CRITICAL_SECTION(cs_objDownloader);
 
-                                mapBatchTxnRequests.erase(next.node);
-                                {
-                                    LOCK(cs_vNodes);
-                                    next.node->Release();
-                                }
+                                mapBatchTxnRequests.erase(next.id);
                             }
                         }
 
@@ -806,20 +787,15 @@ void CRequestManager::SendRequests()
     {
         LEAVE_CRITICAL_SECTION(cs_objDownloader);
         {
-            for (auto iter : mapBatchTxnRequests)
+            for (auto &iter : mapBatchTxnRequests)
             {
-                iter.first->PushMessage(NetMsgType::GETDATA, iter.second);
-                LOG(REQ, "Sent batched request with %d transations to node %s\n", iter.second.size(),
-                    iter.first->GetLogName());
+                connmgr->FindNodeFromId(iter.first)->PushMessage(NetMsgType::GETDATA, iter.second);
+                LOG(REQ, "Sent batched request with %d transations to node %d\n", iter.second.size(),
+                    iter.first);
             }
         }
         ENTER_CRITICAL_SECTION(cs_objDownloader);
 
-        LOCK(cs_vNodes);
-        for (auto iter : mapBatchTxnRequests)
-        {
-            iter.first->Release();
-        }
         mapBatchTxnRequests.clear();
     }
 }

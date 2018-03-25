@@ -27,6 +27,7 @@ successful receipt, "requester.Rejected(...)" to indicate a bad object (request 
 #ifndef REQUEST_MANAGER_H
 #define REQUEST_MANAGER_H
 
+#include "connmgr.h"
 #include "net.h"
 #include "nodestate.h"
 #include "stat.h"
