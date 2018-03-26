@@ -2093,6 +2093,13 @@ void ThreadMessageHandler()
 
     while (true)
     {
+
+        // Send requests for blks and txns that may have been put into the request manager from the above
+        // iteration of SendMessages(). We want to do this before the potential timed_wait below.
+        //if (fCheckRqstManager)
+            requester.SendRequests();
+
+ 
         fMoreWork.store(false);
         bool fCheckRqstManager = false;
 
@@ -2146,12 +2153,7 @@ void ThreadMessageHandler()
                 pnode->Release();
         }
 
-        // Send requests for blks and txns that may have been put into the request manager from the above
-        // iteration of SendMessages(). We want to do this before the potential timed_wait below.
-        //if (fCheckRqstManager)
-            requester.SendRequests();
-
-        if (!fMoreWork.load())
+       if (!fMoreWork.load())
             messageHandlerCondition.timed_wait(
                 lock, boost::posix_time::microsec_clock::universal_time() + boost::posix_time::milliseconds(100));
     }
