@@ -624,6 +624,7 @@ void CRequestManager::SendRequests()
 
                     if (fBatchBlockRequests)
                     {
+                        if (mapBatchBlockRequests.find(next.node) == mapBatchBlockRequests.end())
                         {
                             LOCK(cs_vNodes);
                             next.node->AddRef();
@@ -699,7 +700,6 @@ void CRequestManager::SendRequests()
         }
         ENTER_CRITICAL_SECTION(cs_objDownloader);
 
-        LOCK(cs_vNodes);
         for (auto iter : mapBatchBlockRequests)
         {
             iter.first->Release();
@@ -987,6 +987,8 @@ bool CRequestManager::MarkBlockAsReceived(const uint256 &hash, CNode *pnode)
         mapBlocksInFlight.find(hash);
     if (itInFlight != mapBlocksInFlight.end())
     {
+        static int nIterations = 0;
+
         CNodeState *state = State(itInFlight->second.first);
         DbgAssert(state != nullptr, return false);
 
@@ -996,13 +998,42 @@ bool CRequestManager::MarkBlockAsReceived(const uint256 &hash, CNode *pnode)
 
         // calculate avg block response time over a range of blocks to be used for IBD tuning.
         static uint8_t blockRange = 50;
+
+        // get the median value for overall response time (s)
+        double nOverallAverageResponseTime = 600.0; // start large so we don't get any disconnects.
+        vOverallBlockResponseTime.emplace_back(nResponseTime);
+        if (vOverallBlockResponseTime.size() > blockRange * 4)
         {
-            LOCK(pnode->cs_nAvgBlkResponseTime);
-            if (pnode->nAvgBlkResponseTime < 0)
-                pnode->nAvgBlkResponseTime = 2.0;
-            if (pnode->nAvgBlkResponseTime > 0)
-                pnode->nAvgBlkResponseTime -= (pnode->nAvgBlkResponseTime / blockRange);
-            pnode->nAvgBlkResponseTime += nResponseTime / blockRange;
+            vOverallBlockResponseTime.erase(vOverallBlockResponseTime.begin());
+            std::vector<double> vTemp = vOverallBlockResponseTime;
+            int nMidValue = blockRange * 4 / 2;
+            std::nth_element(vTemp.begin(), vTemp.begin() + nMidValue, vTemp.end());
+            nOverallAverageResponseTime = vTemp[nMidValue];
+        }
+
+        // record response times and adjust blocks in flight.
+        {
+            // get the median response time for this peer
+            {
+                LOCK(pnode->cs_nAvgBlkResponseTime);
+                pnode->nAvgBlkResponseTime = 0.0;
+                pnode->vAvgBlkResponseTime.emplace_back(nResponseTime);
+                if (pnode->vAvgBlkResponseTime.size() > blockRange)
+                {
+                    pnode->vAvgBlkResponseTime.erase(pnode->vAvgBlkResponseTime.begin());
+                    std::vector<double> vTemp = pnode->vAvgBlkResponseTime;
+                    int nMidValue = blockRange / 2;
+                    std::nth_element(vTemp.begin(), vTemp.begin() + nMidValue, vTemp.end());
+                    pnode->nAvgBlkResponseTime = vTemp[nMidValue];
+                }
+            }
+// TDO: alwasy leave half your peers up!
+            if (vNodes.size() > 2 && IsInitialBlockDownload() && ++nIterations > blockRange && pnode->nAvgBlkResponseTime > nOverallAverageResponseTime * 5)
+            {
+                LOGA("disconnecting %s because too slow , overall avg %d peer avg %d\n", pnode->GetLogName(), nOverallAverageResponseTime, pnode->nAvgBlkResponseTime);
+                pnode->fDisconnectRequest = true;
+                return true;
+            }
 
             if (pnode->nAvgBlkResponseTime < 0.2)
             {

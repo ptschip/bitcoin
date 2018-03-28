@@ -2802,6 +2802,7 @@ CNode::CNode(SOCKET hSocketIn, const CAddress &addrIn, const std::string &addrNa
     fBUVersionSent = false;
     fSuccessfullyConnected = false;
     fDisconnect = false;
+    fDisconnectRequest = false;
     nRefCount = 0;
     nSendSize = 0;
     nSendOffset = 0;

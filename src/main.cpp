@@ -6890,6 +6890,23 @@ bool SendMessages(CNode *pto)
 {
     const Consensus::Params &consensusParams = Params().GetConsensus();
     {
+        // Check for an internal disconnect request and if true then set fDisconnect. This would typically happen
+        // during initial sync when a peer has a slow connection
+        // and we want to disconnect them.  We want to then wait for any blocks that are still in flight rather
+        // than re-requesting them later.
+        if (pto->fDisconnectRequest)
+        {
+            LOCK(cs_main);
+            CNodeState *nodestate = State(pto->GetId());
+            DbgAssert(nodestate != nullptr, return false);
+            LOGA("peer=%d, disconnecting %d in flight with size %d\n", pto->id, nodestate->nBlocksInFlight, nodestate->vBlocksInFlight.size() );
+            if (nodestate->nBlocksInFlight == 0)
+{
+LOGA("did the disconnect\n");
+                pto->fDisconnect = true;
+}
+        }
+
         // First set fDisconnect if appropriate.
         pto->DisconnectIfBanned();
 
@@ -7301,7 +7318,7 @@ bool SendMessages(CNode *pto)
         //
         // Message: getdata (blocks)
         //
-        if (!pto->fDisconnect && !pto->fClient && state.nBlocksInFlight < (int)pto->nMaxBlocksInTransit)
+        if (!pto->fDisconnect && !pto->fDisconnectRequest && !pto->fClient && state.nBlocksInFlight < (int)pto->nMaxBlocksInTransit)
         {
             std::vector<CBlockIndex *> vToDownload;
             requester.FindNextBlocksToDownload(

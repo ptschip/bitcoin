@@ -127,6 +127,10 @@ protected:
     bool RequestBlock(CNode *pfrom, CInv obj);
 
 public:
+    // vector containing the last block responses times and used to calcualted the overall
+    // median response time during initial sync.
+    std::vector<double> vOverallBlockResponseTime;
+
     // map that tracks current blocks in flight.  Still using cs_main to protect this and is used
     // in MarkBlockAsInflight and MarkBlockAsReceived.  This is not ideal to still use cs_main here
     // but is really just temporary as we move more functionality into the request manager.
