@@ -1026,12 +1026,16 @@ bool CRequestManager::MarkBlockAsReceived(const uint256 &hash, CNode *pnode)
                     pnode->nAvgBlkResponseTime = vTemp[nMidValue];
                 }
             }
-// TDO: alwasy leave half your peers up!
+
+            // Request for a disconnect if we're over the response time limit.  We don't do an fDisconnect = true here because we want
+            // to drain the queue for any blocks that are still returning.  This prevents us from having to re-request all those blocks
+            // again.
             if (vNodes.size() >= nMaxOutConnections - 1 && IsInitialBlockDownload() && ++nIterations > blockRange && pnode->nAvgBlkResponseTime > nOverallAverageResponseTime * 10)
             {
                 LOGA("disconnecting %s because too slow , overall avg %d peer avg %d\n", pnode->GetLogName(), nOverallAverageResponseTime, pnode->nAvgBlkResponseTime);
                 pnode->fDisconnectRequest = true;
-                // we must not return here but continue in order to update the vBlocksInFlight stats.
+                // We must not return here but continue in order
+                // to update the vBlocksInFlight stats.
             }
 
             if (pnode->nAvgBlkResponseTime < 0.2)
