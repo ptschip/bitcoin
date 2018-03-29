@@ -127,6 +127,9 @@ protected:
     bool RequestBlock(CNode *pfrom, CInv obj);
 
 public:
+    // map of blocks in flight and their respective request counts
+    std::map<uint256, uint32_t> mapBlocksRequestedCount;
+
     // vector containing the last block responses times and used to calcualted the overall
     // median response time during initial sync.
     std::vector<double> vOverallBlockResponseTime;

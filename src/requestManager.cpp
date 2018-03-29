@@ -954,11 +954,9 @@ void CRequestManager::MarkBlockAsInFlight(NodeId nodeid,
     // If started then clear the thinblock timer used for preferential downloading
     thindata.ClearThinBlockTimer(hash);
 
-    // BU why mark as received? because this erases it from the inflight list.  Instead we'll check for it
-    // BU removed: MarkBlockAsReceived(hash);
     std::map<uint256, std::pair<NodeId, std::list<QueuedBlock>::iterator> >::iterator itInFlight =
         mapBlocksInFlight.find(hash);
-    if (itInFlight == mapBlocksInFlight.end()) // If it hasn't already been marked inflight...
+//    if (itInFlight == mapBlocksInFlight.end()) // If it hasn't already been marked inflight...
     {
         int64_t nNow = GetTimeMicros();
         QueuedBlock newentry = {hash, pindex, nNow, pindex != nullptr};
@@ -975,6 +973,7 @@ void CRequestManager::MarkBlockAsInFlight(NodeId nodeid,
             nPeersWithValidatedDownloads++;
         }
         mapBlocksInFlight[hash] = std::make_pair(nodeid, it);
+        mapBlocksRequestedCount[hash] += 1;
     }
 }
 
@@ -1002,11 +1001,11 @@ bool CRequestManager::MarkBlockAsReceived(const uint256 &hash, CNode *pnode)
         // get the median value for overall response time (s)
         double nOverallAverageResponseTime = 600.0; // start large so we don't get any disconnects.
         vOverallBlockResponseTime.emplace_back(nResponseTime);
-        if (vOverallBlockResponseTime.size() > blockRange * 4)
+        if (vOverallBlockResponseTime.size() > blockRange * nMaxOutConnections)
         {
             vOverallBlockResponseTime.erase(vOverallBlockResponseTime.begin());
             std::vector<double> vTemp = vOverallBlockResponseTime;
-            int nMidValue = blockRange * 4 / 2;
+            int nMidValue = blockRange * nMaxOutConnections / 2;
             std::nth_element(vTemp.begin(), vTemp.begin() + nMidValue, vTemp.end());
             nOverallAverageResponseTime = vTemp[nMidValue];
         }
@@ -1016,7 +1015,7 @@ bool CRequestManager::MarkBlockAsReceived(const uint256 &hash, CNode *pnode)
             // get the median response time for this peer
             {
                 LOCK(pnode->cs_nAvgBlkResponseTime);
-                pnode->nAvgBlkResponseTime = 0.0;
+                pnode->nAvgBlkResponseTime = 2.0;
                 pnode->vAvgBlkResponseTime.emplace_back(nResponseTime);
                 if (pnode->vAvgBlkResponseTime.size() > blockRange)
                 {
@@ -1028,11 +1027,11 @@ bool CRequestManager::MarkBlockAsReceived(const uint256 &hash, CNode *pnode)
                 }
             }
 // TDO: alwasy leave half your peers up!
-            if (vNodes.size() > 2 && IsInitialBlockDownload() && ++nIterations > blockRange && pnode->nAvgBlkResponseTime > nOverallAverageResponseTime * 5)
+            if (vNodes.size() >= nMaxOutConnections - 1 && IsInitialBlockDownload() && ++nIterations > blockRange && pnode->nAvgBlkResponseTime > nOverallAverageResponseTime * 10)
             {
                 LOGA("disconnecting %s because too slow , overall avg %d peer avg %d\n", pnode->GetLogName(), nOverallAverageResponseTime, pnode->nAvgBlkResponseTime);
                 pnode->fDisconnectRequest = true;
-                return true;
+                // we must not return here but continue in order to update the vBlocksInFlight stats.
             }
 
             if (pnode->nAvgBlkResponseTime < 0.2)
@@ -1112,6 +1111,19 @@ bool CRequestManager::MarkBlockAsReceived(const uint256 &hash, CNode *pnode)
         state->vBlocksInFlight.erase(itInFlight->second.second);
         state->nBlocksInFlight--;
         mapBlocksInFlight.erase(itInFlight);
+
+        // Update the number of this same block that was requested. This could have been requested
+        // multiple times by a re-request.
+        if (mapBlocksRequestedCount.find(hash) != mapBlocksRequestedCount.end())
+        {
+            if (mapBlocksRequestedCount[hash] <= 1)
+                mapBlocksRequestedCount.erase(hash);
+            else
+                mapBlocksRequestedCount[hash] -= 1;
+        }
+        else
+            DbgAssert(mapBlocksRequestedCount.count(hash), return true);
+
         return true;
     }
     return false;

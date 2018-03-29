@@ -289,6 +289,14 @@ void FinalizeNode(NodeId nodeid)
     {
         LOGA("erasing map mapblocksinflight entries\n");
         requester.mapBlocksInFlight.erase(entry.hash);
+        if (requester.mapBlocksRequestedCount.find(entry.hash) != requester.mapBlocksRequestedCount.end())
+        {
+            requester.mapBlocksRequestedCount[entry.hash] -= 1;
+            if (requester.mapBlocksRequestedCount[entry.hash] <= 0)
+                requester.mapBlocksRequestedCount.erase(entry.hash);
+        }
+        else
+            DbgAssert(requester.mapBlocksRequestedCount.count(entry.hash), );
 
         // Reset all requests times to zero so that we can immediately re-request these blocks
         requester.ResetLastRequestTime(entry.hash);
@@ -3908,6 +3916,27 @@ bool ProcessNewBlock(CValidationState &state,
         // been stored to disk. Doing so prevents unnecessary re-requests.
         CInv inv(MSG_BLOCK, hash);
         requester.Received(inv, pfrom);
+/*
+        // If there are more of the same block in flight, from re-requests, then we need to clean up and mark those
+        // blocks as received also
+        if (requester.mapBlocksRequestedCount.find(hash) != requester.mapBlocksRequestedCount.end())
+        {
+            // we have to iterate through all of mapNodeState to find any matches for this block in flight. This will happen
+            // rarely in practice so will not be a performance hit.
+            for (auto &it : mapNodeState)
+            {
+                for (const QueuedBlock &entry : it.second.vBlocksInFlight)
+                {
+                    if (entry.hash == hash)
+                    {
+                        CNodeRef noderef = connmgr->FindNodeFromId(it.first);
+                        requester.MarkBlockAsReceived(hash, noderef.get());
+                        LOGA("marking block as recv\n");
+                    }
+                }
+            }
+        }
+*/
     }
 
     if (!ActivateBestChain(state, chainparams, pblock, fParallel))
