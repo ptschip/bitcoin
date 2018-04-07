@@ -256,6 +256,7 @@ void InitializeNode(const CNode *pnode)
     LOCK(cs_main);
     mapNodeState.emplace_hint(mapNodeState.end(), std::piecewise_construct, std::forward_as_tuple(pnode->GetId()),
         std::forward_as_tuple(pnode->addr, std::move(pnode->addrName)));
+LOGA("adding a nodestate with %d nodes\n", mapNodeState.size());
 }
 
 void FinalizeNode(NodeId nodeid)
@@ -270,7 +271,7 @@ void FinalizeNode(NodeId nodeid)
     for (const QueuedBlock &entry : state->vBlocksInFlight)
     {
         LOGA("erasing map mapblocksinflight entries\n");
-        requester.MapBlocksInFlightErase(entry.hash);
+        requester.MapBlocksInFlightErase(nodeid, entry.hash);
 
         // Reset all requests times to zero so that we can immediately re-request these blocks
         requester.ResetLastRequestTime(entry.hash);

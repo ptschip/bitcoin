@@ -938,11 +938,58 @@ void CRequestManager::FindNextBlocksToDownload(NodeId nodeid, unsigned int count
     }
 }
 
+// Methods for handling mapBlocksInFlight.
+auto CRequestManager::MapBlocksInFlightFind(const NodeId nodeid, const uint256 &hash)
+    -> std::multimap<uint256, std::pair<NodeId, std::list<QueuedBlock>::iterator> >::iterator
+{
+    LOCK(cs_objDownloader);
+    std::pair<std::multimap<uint256, std::pair<NodeId, std::list<QueuedBlock>::iterator> >::iterator,
+        std::multimap<uint256, std::pair<NodeId, std::list<QueuedBlock>::iterator> >::iterator>
+        range;
+    range = mapBlocksInFlight.equal_range(hash);
+    while (range.first != range.second)
+    {
+        // Erase elements that match this hash and nodeid
+        if ((*range.first).second.first == nodeid)
+            return range.first;
+        range.first++;
+    }
+    return mapBlocksInFlight.end();
+}
+
+void CRequestManager::MapBlocksInFlightErase(const NodeId nodeid, const uint256 &hash)
+{
+    LOCK(cs_objDownloader);
+    std::pair<std::multimap<uint256, std::pair<NodeId, std::list<QueuedBlock>::iterator> >::iterator,
+        std::multimap<uint256, std::pair<NodeId, std::list<QueuedBlock>::iterator> >::iterator>
+        range;
+    range = mapBlocksInFlight.equal_range(hash);
+    while (range.first != range.second)
+    {
+        // Erase elements that match this hash and nodeid
+        if ((*range.first).second.first == nodeid)
+            range.first = mapBlocksInFlight.erase(range.first);
+        else
+            range.first++;
+    }
+}
+
+bool CRequestManager::MapBlocksInFlightEmpty()
+{
+    LOCK(cs_objDownloader);
+    return mapBlocksInFlight.empty();
+}
+
+void CRequestManager::MapBlocksInFlightClear()
+{
+    LOCK(cs_objDownloader);
+    mapBlocksInFlight.clear();
+}
+
 // indicate whether we requested this block.
-void CRequestManager::MarkBlockAsInFlight(NodeId nodeid,
+void CRequestManager::MarkBlockAsInFlight(const NodeId nodeid,
     const uint256 &hash,
-    const Consensus::Params &consensusParams,
-    CBlockIndex *pindex)
+    const Consensus::Params &consensusParams)
 {
     AssertLockNotHeld(cs_objDownloader);
 
@@ -954,9 +1001,7 @@ void CRequestManager::MarkBlockAsInFlight(NodeId nodeid,
     thindata.ClearThinBlockTimer(hash);
 
     LOCK(cs_objDownloader);
-    std::map<uint256, std::pair<NodeId, std::list<QueuedBlock>::iterator> >::iterator itInFlight =
-        mapBlocksInFlight.find(hash);
-    if (itInFlight == mapBlocksInFlight.end()) // If it hasn't already been marked inflight...
+    if (MapBlocksInFlightFind(nodeid, hash) == mapBlocksInFlight.end())
     {
         int64_t nNow = GetTimeMicros();
         QueuedBlock newentry = {hash, nNow};
@@ -967,7 +1012,7 @@ void CRequestManager::MarkBlockAsInFlight(NodeId nodeid,
             // We're starting a block download (batch) from this peer.
             state->nDownloadingSince = GetTimeMicros();
         }
-        mapBlocksInFlight[hash] = std::make_pair(nodeid, it);
+        mapBlocksInFlight.insert(std::make_pair(hash, std::make_pair(nodeid, it)));
     }
 }
 
@@ -977,99 +1022,102 @@ bool CRequestManager::MarkBlockAsReceived(const uint256 &hash, CNode *pnode)
     AssertLockHeld(cs_main);
 
     LOCK(cs_objDownloader);
-    std::map<uint256, std::pair<NodeId, std::list<QueuedBlock>::iterator> >::iterator itInFlight =
-        mapBlocksInFlight.find(hash);
-    if (itInFlight != mapBlocksInFlight.end())
+    if (pnode)
     {
-        CNodeState *state = State(itInFlight->second.first);
-        DbgAssert(state != nullptr, return false);
-
-        int64_t getdataTime = itInFlight->second.second->nTime;
-        int64_t now = GetTimeMicros();
-        double nResponseTime = (double)(now - getdataTime) / 1000000.0;
-
-        // calculate avg block response time over a range of blocks to be used for IBD tuning.
-        static uint8_t blockRange = 50;
+        auto itInFlight = MapBlocksInFlightFind(pnode->GetId(), hash);
+        if (itInFlight != mapBlocksInFlight.end())
         {
-            LOCK(pnode->cs_nAvgBlkResponseTime);
-            if (pnode->nAvgBlkResponseTime < 0)
-                pnode->nAvgBlkResponseTime = 2.0;
-            if (pnode->nAvgBlkResponseTime > 0)
-                pnode->nAvgBlkResponseTime -= (pnode->nAvgBlkResponseTime / blockRange);
-            pnode->nAvgBlkResponseTime += nResponseTime / blockRange;
+            NodeId nodeid = itInFlight->second.first;
+            CNodeState *state = State(nodeid);
+            DbgAssert(state != nullptr, return false);
 
-            if (pnode->nAvgBlkResponseTime < 0.2)
-            {
-                pnode->nMaxBlocksInTransit.store(64);
-            }
-            else if (pnode->nAvgBlkResponseTime < 0.5)
-            {
-                pnode->nMaxBlocksInTransit.store(56);
-            }
-            else if (pnode->nAvgBlkResponseTime < 0.9)
-            {
-                pnode->nMaxBlocksInTransit.store(48);
-            }
-            else if (pnode->nAvgBlkResponseTime < 1.4)
-            {
-                pnode->nMaxBlocksInTransit.store(32);
-            }
-            else if (pnode->nAvgBlkResponseTime < 2.0)
-            {
-                pnode->nMaxBlocksInTransit.store(24);
-            }
-            else
-            {
-                pnode->nMaxBlocksInTransit.store(16);
-            }
+            int64_t getdataTime = itInFlight->second.second->nTime;
+            int64_t now = GetTimeMicros();
+            double nResponseTime = (double)(now - getdataTime) / 1000000.0;
 
-            LOG(THIN | BLK, "Average block response time is %.2f seconds\n", pnode->nAvgBlkResponseTime);
-        }
-
-        // if there are no blocks in flight then ask for a few more blocks
-        if (state->nBlocksInFlight <= 0)
-            pnode->nMaxBlocksInTransit.fetch_add(4);
-
-        if (maxBlocksInTransitPerPeer.value != 0)
-        {
-            pnode->nMaxBlocksInTransit.store(maxBlocksInTransitPerPeer.value);
-        }
-        if (blockDownloadWindow.value != 0)
-        {
-            BLOCK_DOWNLOAD_WINDOW = blockDownloadWindow.value;
-        }
-        LOG(THIN | BLK, "BLOCK_DOWNLOAD_WINDOW is %d nMaxBlocksInTransit is %d\n", BLOCK_DOWNLOAD_WINDOW,
-            pnode->nMaxBlocksInTransit.load());
-
-        if (IsChainNearlySyncd())
-        {
-            LOCK(cs_vNodes);
-            for (CNode *pnode : vNodes)
+            // calculate avg block response time over a range of blocks to be used for IBD tuning.
+            static uint8_t blockRange = 50;
             {
-                if (pnode->mapThinBlocksInFlight.size() > 0)
+                LOCK(pnode->cs_nAvgBlkResponseTime);
+                if (pnode->nAvgBlkResponseTime < 0)
+                    pnode->nAvgBlkResponseTime = 2.0;
+                if (pnode->nAvgBlkResponseTime > 0)
+                    pnode->nAvgBlkResponseTime -= (pnode->nAvgBlkResponseTime / blockRange);
+                pnode->nAvgBlkResponseTime += nResponseTime / blockRange;
+
+                if (pnode->nAvgBlkResponseTime < 0.2)
                 {
-                    LOCK(pnode->cs_mapthinblocksinflight);
-                    if (pnode->mapThinBlocksInFlight.count(hash))
+                    pnode->nMaxBlocksInTransit.store(64);
+                }
+                else if (pnode->nAvgBlkResponseTime < 0.5)
+                {
+                    pnode->nMaxBlocksInTransit.store(56);
+                }
+                else if (pnode->nAvgBlkResponseTime < 0.9)
+                {
+                    pnode->nMaxBlocksInTransit.store(48);
+                }
+                else if (pnode->nAvgBlkResponseTime < 1.4)
+                {
+                    pnode->nMaxBlocksInTransit.store(32);
+                }
+                else if (pnode->nAvgBlkResponseTime < 2.0)
+                {
+                    pnode->nMaxBlocksInTransit.store(24);
+                }
+                else
+                {
+                    pnode->nMaxBlocksInTransit.store(16);
+                }
+
+                LOG(THIN | BLK, "Average block response time is %.2f seconds\n", pnode->nAvgBlkResponseTime);
+            }
+
+            // if there are no blocks in flight then ask for a few more blocks
+            if (state->nBlocksInFlight <= 0)
+                pnode->nMaxBlocksInTransit.fetch_add(4);
+
+            if (maxBlocksInTransitPerPeer.value != 0)
+            {
+                pnode->nMaxBlocksInTransit.store(maxBlocksInTransitPerPeer.value);
+            }
+            if (blockDownloadWindow.value != 0)
+            {
+                BLOCK_DOWNLOAD_WINDOW = blockDownloadWindow.value;
+            }
+            LOG(THIN | BLK, "BLOCK_DOWNLOAD_WINDOW is %d nMaxBlocksInTransit is %d\n", BLOCK_DOWNLOAD_WINDOW,
+                pnode->nMaxBlocksInTransit.load());
+
+            if (IsChainNearlySyncd())
+            {
+                LOCK(cs_vNodes);
+                for (CNode *pnode : vNodes)
+                {
+                    if (pnode->mapThinBlocksInFlight.size() > 0)
                     {
-                        // Only update thinstats if this is actually a thinblock and not a regular block.
-                        // Sometimes we request a thinblock but then revert to requesting a regular block
-                        // as can happen when the thinblock preferential timer is exceeded.
-                        thindata.UpdateResponseTime(nResponseTime);
-                        break;
+                        LOCK(pnode->cs_mapthinblocksinflight);
+                        if (pnode->mapThinBlocksInFlight.count(hash))
+                        {
+                            // Only update thinstats if this is actually a thinblock and not a regular block.
+                            // Sometimes we request a thinblock but then revert to requesting a regular block
+                            // as can happen when the thinblock preferential timer is exceeded.
+                            thindata.UpdateResponseTime(nResponseTime);
+                            break;
+                        }
                     }
                 }
             }
+            // BUIP010 Xtreme Thinblocks: end section
+            if (state->vBlocksInFlight.begin() == itInFlight->second.second)
+            {
+                // First block on the queue was received, update the start download time for the next one
+                state->nDownloadingSince = std::max(state->nDownloadingSince, GetTimeMicros());
+            }
+            state->vBlocksInFlight.erase(itInFlight->second.second);
+            state->nBlocksInFlight--;
+            MapBlocksInFlightErase(nodeid, hash);
+            return true;
         }
-        // BUIP010 Xtreme Thinblocks: end section
-        if (state->vBlocksInFlight.begin() == itInFlight->second.second)
-        {
-            // First block on the queue was received, update the start download time for the next one
-            state->nDownloadingSince = std::max(state->nDownloadingSince, GetTimeMicros());
-        }
-        state->vBlocksInFlight.erase(itInFlight->second.second);
-        state->nBlocksInFlight--;
-        mapBlocksInFlight.erase(itInFlight);
-        return true;
     }
     return false;
 }

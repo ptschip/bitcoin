@@ -106,7 +106,7 @@ protected:
     typedef std::map<uint256, CUnknownObj> OdMap;
     OdMap mapTxnInfo;
     OdMap mapBlkInfo;
-    std::map<uint256, std::pair<NodeId, std::list<QueuedBlock>::iterator> > mapBlocksInFlight;
+    std::multimap<uint256, std::pair<NodeId, std::list<QueuedBlock>::iterator> > mapBlocksInFlight;
     CCriticalSection cs_objDownloader; // protects mapTxnInfo, mapBlkInfo and mapBlocksInFlight
 
     OdMap::iterator sendIter;
@@ -171,30 +171,18 @@ public:
     void FindNextBlocksToDownload(NodeId nodeid, unsigned int count, std::vector<CBlockIndex *> &vBlocks);
 
     // Returns a bool indicating whether we requested this block.
-    void MarkBlockAsInFlight(NodeId nodeid,
+    void MarkBlockAsInFlight(const NodeId nodeid,
         const uint256 &hash,
-        const Consensus::Params &consensusParams,
-        CBlockIndex *pindex = nullptr);
+        const Consensus::Params &consensusParams);
 
     // Returns a bool if successful in indicating we received this block.
     bool MarkBlockAsReceived(const uint256 &hash, CNode *pnode);
 
-    // Methods for handling mapBlocksInFlight which is protected.
-    void MapBlocksInFlightErase(const uint256 &hash)
-    {
-        LOCK(cs_objDownloader);
-        mapBlocksInFlight.erase(hash);
-    }
-    bool MapBlocksInFlightEmpty()
-    {
-        LOCK(cs_objDownloader);
-        return mapBlocksInFlight.empty();
-    }
-    void MapBlocksInFlightClear()
-    {
-        LOCK(cs_objDownloader);
-        mapBlocksInFlight.clear();
-    }
+    // Methods for handling mapBlocksInFlight.
+    auto MapBlocksInFlightFind(const NodeId nodeid, const uint256 &hash) -> std::multimap<uint256, std::pair<NodeId, std::list<QueuedBlock>::iterator> >::iterator;
+    void MapBlocksInFlightErase(const NodeId nodeid, const uint256 &hash);
+    bool MapBlocksInFlightEmpty();
+    void MapBlocksInFlightClear();
 
     // Check for block download timeout and disconnect node if necessary.
     void CheckForDownloadTimeout(CNode *pnode,
