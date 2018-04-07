@@ -92,6 +92,11 @@ public:
     bool AddSource(CNode *from); // returns true if the source did not already exist
 };
 
+struct RequestData
+{
+    int64_t nRequestTime; //! Time of "getdata" request in microseconds.
+};
+
 class CRequestManager
 {
 protected:
@@ -179,7 +184,7 @@ public:
     bool MarkBlockAsReceived(const uint256 &hash, CNode *pnode);
 
     // Methods for handling mapBlocksInFlight.
-    auto MapBlocksInFlightFind(const NodeId nodeid, const uint256 &hash) -> std::multimap<uint256, std::pair<NodeId, std::list<QueuedBlock>::iterator> >::iterator;
+    auto MapBlocksInFlightFind(const NodeId nodeid, const uint256 &hash) -> std::multimap<uint256, std::pair<NodeId, int64_t> >::iterator;
     void MapBlocksInFlightErase(const NodeId nodeid, const uint256 &hash);
     bool MapBlocksInFlightEmpty();
     void MapBlocksInFlightClear();

@@ -940,11 +940,11 @@ void CRequestManager::FindNextBlocksToDownload(NodeId nodeid, unsigned int count
 
 // Methods for handling mapBlocksInFlight.
 auto CRequestManager::MapBlocksInFlightFind(const NodeId nodeid, const uint256 &hash)
-    -> std::multimap<uint256, std::pair<NodeId, std::list<QueuedBlock>::iterator> >::iterator
+    -> std::multimap<uint256, std::pair<NodeId, int64_t> >::iterator
 {
     LOCK(cs_objDownloader);
-    std::pair<std::multimap<uint256, std::pair<NodeId, std::list<QueuedBlock>::iterator> >::iterator,
-        std::multimap<uint256, std::pair<NodeId, std::list<QueuedBlock>::iterator> >::iterator>
+    std::pair<std::multimap<uint256, std::pair<NodeId, int64_t> >::iterator,
+        std::multimap<uint256, std::pair<NodeId, int64_t> >::iterator>
         range;
     range = mapBlocksInFlight.equal_range(hash);
     while (range.first != range.second)
@@ -960,8 +960,8 @@ auto CRequestManager::MapBlocksInFlightFind(const NodeId nodeid, const uint256 &
 void CRequestManager::MapBlocksInFlightErase(const NodeId nodeid, const uint256 &hash)
 {
     LOCK(cs_objDownloader);
-    std::pair<std::multimap<uint256, std::pair<NodeId, std::list<QueuedBlock>::iterator> >::iterator,
-        std::multimap<uint256, std::pair<NodeId, std::list<QueuedBlock>::iterator> >::iterator>
+    std::pair<std::multimap<uint256, std::pair<NodeId, int64_t> >::iterator,
+        std::multimap<uint256, std::pair<NodeId,  int64_t> >::iterator>
         range;
     range = mapBlocksInFlight.equal_range(hash);
     while (range.first != range.second)
@@ -1029,7 +1029,7 @@ bool CRequestManager::MarkBlockAsReceived(const uint256 &hash, CNode *pnode)
             CNodeState *state = State(nodeid);
             DbgAssert(state != nullptr, return false);
 
-            int64_t getdataTime = itInFlight->second.second->nTime;
+            int64_t getdataTime = itInFlight->second.second;
             int64_t nNow = GetTimeMicros();
             double nResponseTime = (double)(nNow - getdataTime) / 1000000.0;
 
