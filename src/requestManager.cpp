@@ -1004,15 +1004,13 @@ void CRequestManager::MarkBlockAsInFlight(const NodeId nodeid,
     if (MapBlocksInFlightFind(nodeid, hash) == mapBlocksInFlight.end())
     {
         int64_t nNow = GetTimeMicros();
-        QueuedBlock newentry = {hash, nNow};
-        std::list<QueuedBlock>::iterator it = state->vBlocksInFlight.insert(state->vBlocksInFlight.end(), newentry);
         state->nBlocksInFlight++;
         if (state->nBlocksInFlight == 1)
         {
             // We're starting a block download (batch) from this peer.
-            state->nDownloadingSince = GetTimeMicros();
+            state->nDownloadingSince = nNow;
         }
-        mapBlocksInFlight.insert(std::make_pair(hash, std::make_pair(nodeid, it)));
+        mapBlocksInFlight.insert(std::make_pair(hash, std::make_pair(nodeid, nNow)));
     }
 }
 
@@ -1032,8 +1030,8 @@ bool CRequestManager::MarkBlockAsReceived(const uint256 &hash, CNode *pnode)
             DbgAssert(state != nullptr, return false);
 
             int64_t getdataTime = itInFlight->second.second->nTime;
-            int64_t now = GetTimeMicros();
-            double nResponseTime = (double)(now - getdataTime) / 1000000.0;
+            int64_t nNow = GetTimeMicros();
+            double nResponseTime = (double)(nNow - getdataTime) / 1000000.0;
 
             // calculate avg block response time over a range of blocks to be used for IBD tuning.
             static uint8_t blockRange = 50;
@@ -1107,13 +1105,6 @@ bool CRequestManager::MarkBlockAsReceived(const uint256 &hash, CNode *pnode)
                     }
                 }
             }
-            // BUIP010 Xtreme Thinblocks: end section
-            if (state->vBlocksInFlight.begin() == itInFlight->second.second)
-            {
-                // First block on the queue was received, update the start download time for the next one
-                state->nDownloadingSince = std::max(state->nDownloadingSince, GetTimeMicros());
-            }
-            state->vBlocksInFlight.erase(itInFlight->second.second);
             state->nBlocksInFlight--;
             MapBlocksInFlightErase(nodeid, hash);
             return true;
@@ -1128,7 +1119,7 @@ void CRequestManager::CheckForDownloadTimeout(CNode *pnode,
     const Consensus::Params &consensusParams,
     int64_t nNow)
 {
-    AssertLockHeld(cs_main);
+    LOCK(cs_objDownloader);
 
     // In case there is a block that has been in flight from this peer for 2 + 0.5 * N times the block interval
     // (with N the number of peers from which we're downloading validated blocks), disconnect due to timeout.

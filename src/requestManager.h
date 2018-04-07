@@ -106,7 +106,7 @@ protected:
     typedef std::map<uint256, CUnknownObj> OdMap;
     OdMap mapTxnInfo;
     OdMap mapBlkInfo;
-    std::multimap<uint256, std::pair<NodeId, std::list<QueuedBlock>::iterator> > mapBlocksInFlight;
+    std::multimap<uint256, std::pair<NodeId, int64_t> > mapBlocksInFlight;
     CCriticalSection cs_objDownloader; // protects mapTxnInfo, mapBlkInfo and mapBlocksInFlight
 
     OdMap::iterator sendIter;
