@@ -683,23 +683,20 @@ void CRequestManager::SendRequests()
     if (fBatchBlockRequests && !mapBatchBlockRequests.empty())
     {
         LEAVE_CRITICAL_SECTION(cs_objDownloader);
+        for (auto &iter : mapBatchBlockRequests)
         {
-            for (auto iter : mapBatchBlockRequests)
+            for (auto &inv : iter.second)
             {
-                LOCK(cs_main);
-                for (auto &inv : iter.second)
-                {
-                    MarkBlockAsInFlight(iter.first->GetId(), inv.hash, Params().GetConsensus());
-                }
-                iter.first->PushMessage(NetMsgType::GETDATA, iter.second);
-                LOG(REQ, "Sent batched request with %d blocks to node %s\n", iter.second.size(),
-                    iter.first->GetLogName());
+                MarkBlockAsInFlight(iter.first->GetId(), inv.hash, Params().GetConsensus());
             }
+            iter.first->PushMessage(NetMsgType::GETDATA, iter.second);
+            LOG(REQ, "Sent batched request with %d blocks to node %s\n", iter.second.size(),
+                iter.first->GetLogName());
         }
         ENTER_CRITICAL_SECTION(cs_objDownloader);
 
         LOCK(cs_vNodes);
-        for (auto iter : mapBatchBlockRequests)
+        for (auto &iter : mapBatchBlockRequests)
         {
             iter.first->Release();
         }
@@ -1108,8 +1105,6 @@ void CRequestManager::MarkBlockAsInFlight(const NodeId nodeid,
 // Returns a bool if successful in indicating we received this block.
 bool CRequestManager::MarkBlockAsReceived(const uint256 &hash, CNode *pnode)
 {
-    AssertLockHeld(cs_main);
-
     LOCK(cs_objDownloader);
     if (pnode)
     {
