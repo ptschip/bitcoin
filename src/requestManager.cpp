@@ -621,6 +621,8 @@ void CRequestManager::SendRequests()
 
                     if (fBatchBlockRequests)
                     {
+                        // only add one reference per node
+                        if (mapBatchBlockRequests[next.node].empty())
                         {
                             LOCK(cs_vNodes);
                             next.node->AddRef();
@@ -849,9 +851,9 @@ void CRequestManager::FindAndRequestNextBlocksToDownload(CNode *pto)
     uint32_t nBlocksInFlight = 0;
     {
         LOCK(cs_objDownloader);
-        std::map<NodeId, RequestData>::iterator itInFlight = mapRequestManagerNodeState.find(pto->GetId());
+        std::map<NodeId, RequestData>::iterator itInFlight  = mapRequestManagerNodeState.find(pto->GetId());
         if (itInFlight != mapRequestManagerNodeState.end())
-            nBlocksInFlight = (*itInFlight).second.nBlocksInFlight;
+            nBlocksInFlight =  (*itInFlight).second.nBlocksInFlight;
         else
             return;
     }
@@ -988,6 +990,7 @@ void CRequestManager::MapBlocksInFlightHashes(const NodeId nodeid, std::vector<u
         if (iter.second.first == nodeid)
             vBlocksInFlight.emplace_back(iter.first);
     }
+
 }
 
 auto CRequestManager::MapBlocksInFlightFind(const NodeId nodeid, const uint256 &hash)
@@ -1012,7 +1015,7 @@ void CRequestManager::MapBlocksInFlightErase(const NodeId nodeid, const uint256 
 {
     LOCK(cs_objDownloader);
     std::pair<std::multimap<uint256, std::pair<NodeId, int64_t> >::iterator,
-        std::multimap<uint256, std::pair<NodeId, int64_t> >::iterator>
+        std::multimap<uint256, std::pair<NodeId,  int64_t> >::iterator>
         range;
     range = mapBlocksInFlight.equal_range(hash);
     while (range.first != range.second)
@@ -1208,7 +1211,9 @@ bool CRequestManager::MarkBlockAsReceived(const uint256 &hash, CNode *pnode)
     return false;
 }
 
-void CRequestManager::CheckForDownloadTimeout(CNode *pnode, const Consensus::Params &consensusParams, int64_t nNow)
+void CRequestManager::CheckForDownloadTimeout(CNode *pnode,
+    const Consensus::Params &consensusParams,
+    int64_t nNow)
 {
     LOCK(cs_objDownloader);
 
