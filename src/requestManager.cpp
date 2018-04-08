@@ -841,6 +841,45 @@ void CRequestManager::UpdateBlockAvailability(NodeId nodeid, const uint256 &hash
     }
 }
 
+void CRequestManager::FindAndRequestNextBlocksToDownload(CNode *pto)
+{
+    AssertLockHeld(cs_main);
+
+    // Get current number of blocks in flight for this node.
+    uint32_t nBlocksInFlight = 0;
+    {
+        LOCK(cs_objDownloader);
+        std::map<NodeId, RequestData>::iterator itInFlight = mapRequestManagerNodeState.find(pto->GetId());
+        if (itInFlight != mapRequestManagerNodeState.end())
+            nBlocksInFlight = (*itInFlight).second.nBlocksInFlight;
+        else
+            return;
+    }
+
+    // Find next blocks to download and request them.
+    if (!pto->fDisconnect && !pto->fClient && nBlocksInFlight < (int)pto->nMaxBlocksInTransit)
+    {
+        std::vector<CBlockIndex *> vToDownload;
+        FindNextBlocksToDownload(pto->GetId(), pto->nMaxBlocksInTransit.load() - nBlocksInFlight, vToDownload);
+        std::vector<CInv> vGetBlocks;
+        for (CBlockIndex *pindex : vToDownload)
+        {
+            CInv inv(MSG_BLOCK, pindex->GetBlockHash());
+            if (!AlreadyHave(inv))
+            {
+                vGetBlocks.emplace_back(inv);
+            }
+        }
+        if (!vGetBlocks.empty())
+        {
+            if (!IsInitialBlockDownload())
+                AskFor(vGetBlocks, pto);
+            else
+                AskForDuringIBD(vGetBlocks, pto);
+        }
+    }
+}
+
 // Update pindexLastCommonBlock and add not-in-flight missing successors to vBlocks, until it has
 // at most count entries.
 void CRequestManager::FindNextBlocksToDownload(NodeId nodeid, unsigned int count, std::vector<CBlockIndex *> &vBlocks)
@@ -939,6 +978,18 @@ void CRequestManager::FindNextBlocksToDownload(NodeId nodeid, unsigned int count
 }
 
 // Methods for handling mapBlocksInFlight.
+void CRequestManager::MapBlocksInFlightHashes(const NodeId nodeid, std::vector<uint256> &vBlocksInFlight)
+{
+    // Get all the block hashes that are currently in flight for this node.
+    LOCK(cs_objDownloader);
+    for (auto &iter : mapBlocksInFlight)
+    {
+        // save elements that match this nodeid
+        if (iter.second.first == nodeid)
+            vBlocksInFlight.emplace_back(iter.first);
+    }
+}
+
 auto CRequestManager::MapBlocksInFlightFind(const NodeId nodeid, const uint256 &hash)
     -> std::multimap<uint256, std::pair<NodeId, int64_t> >::iterator
 {
@@ -949,7 +1000,7 @@ auto CRequestManager::MapBlocksInFlightFind(const NodeId nodeid, const uint256 &
     range = mapBlocksInFlight.equal_range(hash);
     while (range.first != range.second)
     {
-        // Erase elements that match this hash and nodeid
+        // find elements that match this hash and nodeid
         if ((*range.first).second.first == nodeid)
             return range.first;
         range.first++;
@@ -961,7 +1012,7 @@ void CRequestManager::MapBlocksInFlightErase(const NodeId nodeid, const uint256 
 {
     LOCK(cs_objDownloader);
     std::pair<std::multimap<uint256, std::pair<NodeId, int64_t> >::iterator,
-        std::multimap<uint256, std::pair<NodeId,  int64_t> >::iterator>
+        std::multimap<uint256, std::pair<NodeId, int64_t> >::iterator>
         range;
     range = mapBlocksInFlight.equal_range(hash);
     while (range.first != range.second)
@@ -971,6 +1022,25 @@ void CRequestManager::MapBlocksInFlightErase(const NodeId nodeid, const uint256 
             range.first = mapBlocksInFlight.erase(range.first);
         else
             range.first++;
+    }
+}
+
+void CRequestManager::MapBlocksInFlightEraseAll(const NodeId nodeid)
+{
+    LOCK(cs_objDownloader);
+    std::multimap<uint256, std::pair<NodeId, int64_t> >::iterator iter = mapBlocksInFlight.begin();
+    while (iter != mapBlocksInFlight.end())
+    {
+        // Erase elements that match this nodeid
+        if ((*iter).second.first == nodeid)
+        {
+            ResetLastRequestTime((*iter).first);
+            iter = mapBlocksInFlight.erase(iter);
+        }
+        else
+        {
+            iter++;
+        }
     }
 }
 
@@ -986,17 +1056,35 @@ void CRequestManager::MapBlocksInFlightClear()
     mapBlocksInFlight.clear();
 }
 
+void CRequestManager::MapRequestManagerNodeStateInsert(NodeId nodeid)
+{
+    LOCK(cs_objDownloader);
+    mapRequestManagerNodeState.emplace(nodeid, RequestData{0, 0});
+}
+
+void CRequestManager::MapRequestManagerNodeStateErase(NodeId nodeid)
+{
+    LOCK(cs_objDownloader);
+    mapRequestManagerNodeState.erase(nodeid);
+}
+
+bool CRequestManager::MapRequestManagerNodeStateEmpty()
+{
+    LOCK(cs_objDownloader);
+    return mapRequestManagerNodeState.empty();
+}
+
+void CRequestManager::MapRequestManagerNodeStateClear()
+{
+    LOCK(cs_objDownloader);
+    mapRequestManagerNodeState.clear();
+}
+
 // indicate whether we requested this block.
 void CRequestManager::MarkBlockAsInFlight(const NodeId nodeid,
     const uint256 &hash,
     const Consensus::Params &consensusParams)
 {
-    AssertLockNotHeld(cs_objDownloader);
-
-    LOCK(cs_main);
-    CNodeState *state = State(nodeid);
-    DbgAssert(state != nullptr, return );
-
     // If started then clear the thinblock timer used for preferential downloading
     thindata.ClearThinBlockTimer(hash);
 
@@ -1004,11 +1092,11 @@ void CRequestManager::MarkBlockAsInFlight(const NodeId nodeid,
     if (MapBlocksInFlightFind(nodeid, hash) == mapBlocksInFlight.end())
     {
         int64_t nNow = GetTimeMicros();
-        state->nBlocksInFlight++;
-        if (state->nBlocksInFlight == 1)
+        mapRequestManagerNodeState[nodeid].nBlocksInFlight++;
+        if (mapRequestManagerNodeState[nodeid].nBlocksInFlight == 1)
         {
             // We're starting a block download (batch) from this peer.
-            state->nDownloadingSince = nNow;
+            mapRequestManagerNodeState[nodeid].nDownloadingSince = nNow;
         }
         mapBlocksInFlight.insert(std::make_pair(hash, std::make_pair(nodeid, nNow)));
     }
@@ -1022,14 +1110,11 @@ bool CRequestManager::MarkBlockAsReceived(const uint256 &hash, CNode *pnode)
     LOCK(cs_objDownloader);
     if (pnode)
     {
-        auto itInFlight = MapBlocksInFlightFind(pnode->GetId(), hash);
+        NodeId nodeid = pnode->GetId();
+        auto itInFlight = MapBlocksInFlightFind(nodeid, hash);
         if (itInFlight != mapBlocksInFlight.end())
         {
-            NodeId nodeid = itInFlight->second.first;
-            CNodeState *state = State(nodeid);
-            DbgAssert(state != nullptr, return false);
-
-            int64_t getdataTime = itInFlight->second.second;
+            int64_t getdataTime = (*itInFlight).second.second;
             int64_t nNow = GetTimeMicros();
             double nResponseTime = (double)(nNow - getdataTime) / 1000000.0;
 
@@ -1072,7 +1157,7 @@ bool CRequestManager::MarkBlockAsReceived(const uint256 &hash, CNode *pnode)
             }
 
             // if there are no blocks in flight then ask for a few more blocks
-            if (state->nBlocksInFlight <= 0)
+            if (mapRequestManagerNodeState[nodeid].nBlocksInFlight <= 0)
                 pnode->nMaxBlocksInTransit.fetch_add(4);
 
             if (maxBlocksInTransitPerPeer.value != 0)
@@ -1105,35 +1190,53 @@ bool CRequestManager::MarkBlockAsReceived(const uint256 &hash, CNode *pnode)
                     }
                 }
             }
-            state->nBlocksInFlight--;
+
+            // Update the start download time which is used to check for download timeouts. We can't be sure
+            // of the order of the blocks as they return so we update this for every block received from this peer.
+            mapRequestManagerNodeState[nodeid].nDownloadingSince =
+                std::max(mapRequestManagerNodeState[nodeid].nDownloadingSince, GetTimeMicros());
+
+            // Upate blocks currently in flight for this peer.
+            mapRequestManagerNodeState[nodeid].nBlocksInFlight--;
+
+            // Cleanup blocks in flight entry.
             MapBlocksInFlightErase(nodeid, hash);
+
             return true;
         }
     }
     return false;
 }
 
-
-void CRequestManager::CheckForDownloadTimeout(CNode *pnode,
-    const CNodeState &state,
-    const Consensus::Params &consensusParams,
-    int64_t nNow)
+void CRequestManager::CheckForDownloadTimeout(CNode *pnode, const Consensus::Params &consensusParams, int64_t nNow)
 {
     LOCK(cs_objDownloader);
 
     // In case there is a block that has been in flight from this peer for 2 + 0.5 * N times the block interval
     // (with N the number of peers from which we're downloading validated blocks), disconnect due to timeout.
     // We compensate for other peers to prevent killing off peers due to our own downstream link
-    // being saturated. We only count validated in-flight blocks so peers can't advertise non-existing block hashes
-    // to unreasonably increase our timeout.
-    if (!pnode->fDisconnect && state.vBlocksInFlight.size() > 0)
+    // being saturated.
+    if (!pnode->fDisconnect && mapRequestManagerNodeState[pnode->GetId()].nBlocksInFlight > 0)
     {
         if (nNow >
-            state.nDownloadingSince +
+            mapRequestManagerNodeState[pnode->GetId()].nDownloadingSince +
                 consensusParams.nPowTargetSpacing * (BLOCK_DOWNLOAD_TIMEOUT_BASE + BLOCK_DOWNLOAD_TIMEOUT_PER_PEER))
         {
-            LOGA("Timeout downloading block %s from peer=%d, disconnecting\n",
-                state.vBlocksInFlight.front().hash.ToString(), pnode->id);
+            // Find the block with the oldest request time.
+            uint256 oldesthash;
+            int64_t nOldestRequest = GetTimeMicros();
+            NodeId nodeid = pnode->GetId();
+            for (auto &iter : mapBlocksInFlight)
+            {
+                int64_t nRequestTime = iter.second.second;
+                if (nOldestRequest > nRequestTime && iter.second.first == nodeid)
+                {
+                    nOldestRequest = nRequestTime;
+                    oldesthash = iter.first;
+                }
+            }
+
+            LOGA("Timeout downloading block %s from peer=%d, disconnecting\n", oldesthash.ToString(), nodeid);
             pnode->fDisconnect = true;
         }
     }

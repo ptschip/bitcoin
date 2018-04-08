@@ -92,11 +92,6 @@ public:
     bool AddSource(CNode *from); // returns true if the source did not already exist
 };
 
-struct RequestData
-{
-    int64_t nRequestTime; //! Time of "getdata" request in microseconds.
-};
-
 class CRequestManager
 {
 protected:
@@ -107,18 +102,28 @@ protected:
     friend UniValue getstructuresizes(const UniValue &params, bool fHelp);
 #endif
 
-    // map of transactions
+    struct RequestData
+    {
+        // How many blocks are currently being requested but not recieved yet for this node.
+        int32_t nBlocksInFlight;
+
+        // When the first entry in vBlocksInFlight started downloading. Don't care when vBlocksInFlight is empty.
+        int64_t nDownloadingSince;
+    };
+
+    // Maps of transactions, blocks and maps for tracking blocks in flight
     typedef std::map<uint256, CUnknownObj> OdMap;
     OdMap mapTxnInfo;
     OdMap mapBlkInfo;
     std::multimap<uint256, std::pair<NodeId, int64_t> > mapBlocksInFlight;
-    CCriticalSection cs_objDownloader; // protects mapTxnInfo, mapBlkInfo and mapBlocksInFlight
+    std::map<NodeId, RequestData> mapRequestManagerNodeState;
+    // protects mapTxnInfo, mapBlkInfo and mapBlocksInFlight, mapRequestManagerNodeState
+    CCriticalSection cs_objDownloader;
 
     OdMap::iterator sendIter;
     OdMap::iterator sendBlkIter;
 
     int inFlight;
-    // int maxInFlight;
     CStatHistory<int> inFlightTxns;
     CStatHistory<int> receivedTxns;
     CStatHistory<int> rejectedTxns;
@@ -171,29 +176,34 @@ public:
     // Update tracking information about which blocks a peer is assumed to have.
     void UpdateBlockAvailability(NodeId nodeid, const uint256 &hash);
 
-    // Update pindexLastCommonBlock and add not-in-flight missing successors to vBlocks, until it has
-    // at most count entries.
+    // Find the next batch of blocks to download. This mostly get executed during initial sync.
+    void FindAndRequestNextBlocksToDownload(CNode *pto);
     void FindNextBlocksToDownload(NodeId nodeid, unsigned int count, std::vector<CBlockIndex *> &vBlocks);
 
     // Returns a bool indicating whether we requested this block.
-    void MarkBlockAsInFlight(const NodeId nodeid,
-        const uint256 &hash,
-        const Consensus::Params &consensusParams);
+    void MarkBlockAsInFlight(const NodeId nodeid, const uint256 &hash, const Consensus::Params &consensusParams);
 
     // Returns a bool if successful in indicating we received this block.
     bool MarkBlockAsReceived(const uint256 &hash, CNode *pnode);
 
     // Methods for handling mapBlocksInFlight.
-    auto MapBlocksInFlightFind(const NodeId nodeid, const uint256 &hash) -> std::multimap<uint256, std::pair<NodeId, int64_t> >::iterator;
+    void MapBlocksInFlightHashes(const NodeId nodeid, std::vector<uint256> &vBlocksInFlight);
+    auto MapBlocksInFlightFind(const NodeId nodeid, const uint256 &hash)
+        -> std::multimap<uint256, std::pair<NodeId, int64_t> >::iterator;
     void MapBlocksInFlightErase(const NodeId nodeid, const uint256 &hash);
+    void MapBlocksInFlightEraseAll(const NodeId);
     bool MapBlocksInFlightEmpty();
     void MapBlocksInFlightClear();
 
+    // Methods for handling mapRequestManagerNodeState.
+    void MapRequestManagerNodeStateInsert(NodeId nodeid);
+    void MapRequestManagerNodeStateErase(NodeId nodeid);
+    bool MapRequestManagerNodeStateEmpty();
+    void MapRequestManagerNodeStateClear();
+
+
     // Check for block download timeout and disconnect node if necessary.
-    void CheckForDownloadTimeout(CNode *pnode,
-        const CNodeState &state,
-        const Consensus::Params &consensusParams,
-        int64_t nNow);
+    void CheckForDownloadTimeout(CNode *pnode, const Consensus::Params &consensusParams, int64_t nNow);
 };
 
 

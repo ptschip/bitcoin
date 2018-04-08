@@ -47,11 +47,6 @@ struct CNodeState
     //! During IBD we need to update the block availabiity for each peer. We do this by requesting a header
     //  when a peer connects and also when we ask for the initial set of all headers.
     bool fRequestedInitialBlockAvailability;
-
-    std::list<QueuedBlock> vBlocksInFlight;
-    //! When the first entry in vBlocksInFlight started downloading. Don't care when vBlocksInFlight is empty.
-    int64_t nDownloadingSince;
-    int nBlocksInFlight;
     //! Whether we consider this a preferred download peer.
     bool fPreferredDownload;
     //! Whether this peer wants invs or headers (when possible) for block announcements.

@@ -252,11 +252,13 @@ void UpdatePreferredDownload(CNode *node, CNodeState *state)
 
 void InitializeNode(const CNode *pnode)
 {
-    // Add an entry to the nodestate map
+    // Add an entry to the nodestate map.
     LOCK(cs_main);
     mapNodeState.emplace_hint(mapNodeState.end(), std::piecewise_construct, std::forward_as_tuple(pnode->GetId()),
         std::forward_as_tuple(pnode->addr, std::move(pnode->addrName)));
-LOGA("adding a nodestate with %d nodes\n", mapNodeState.size());
+
+    // Add an entry to the request manager nodestate map.
+    requester.MapRequestManagerNodeStateInsert(pnode->GetId());
 }
 
 void FinalizeNode(NodeId nodeid)
@@ -267,22 +269,21 @@ void FinalizeNode(NodeId nodeid)
 
     if (state->fSyncStarted)
         nSyncStarted--;
-
-    for (const QueuedBlock &entry : state->vBlocksInFlight)
-    {
-        LOGA("erasing map mapblocksinflight entries\n");
-        requester.MapBlocksInFlightErase(nodeid, entry.hash);
-
-        // Reset all requests times to zero so that we can immediately re-request these blocks
-        requester.ResetLastRequestTime(entry.hash);
-    }
     nPreferredDownload -= state->fPreferredDownload;
 
+    // Erase all blocks in flight for this node and reset all request times for other block sources
+    // so that we can immediately re-request these blocks if necessary.
+    requester.MapBlocksInFlightEraseAll(nodeid);
+
+    // Erase node state tracking data.
     mapNodeState.erase(nodeid);
+    requester.MapRequestManagerNodeStateErase(nodeid);
+
+    // Do a consistency check after the last peer is removed.  Force consistent state if production code
     if (mapNodeState.empty())
     {
-        // Do a consistency check after the last peer is removed.  Force consistent state if production code
         DbgAssert(requester.MapBlocksInFlightEmpty(), requester.MapBlocksInFlightClear());
+        DbgAssert(requester.MapRequestManagerNodeStateEmpty(), requester.MapRequestManagerNodeStateClear());
         DbgAssert(nPreferredDownload == 0, nPreferredDownload = 0);
     }
 }
@@ -318,10 +319,14 @@ bool GetNodeStateStats(NodeId nodeid, CNodeStateStats &stats)
     stats.nMisbehavior = node->nMisbehavior;
     stats.nSyncHeight = state->pindexBestKnownBlock ? state->pindexBestKnownBlock->nHeight : -1;
     stats.nCommonHeight = state->pindexLastCommonBlock ? state->pindexLastCommonBlock->nHeight : -1;
-    for (const QueuedBlock &queue : state->vBlocksInFlight)
+
+    // Get all the block heights for these hashes.
+    std::vector<uint256> vBlocksInFlight;
+    requester.MapBlocksInFlightHashes(nodeid, vBlocksInFlight);
+    for (auto &hash : vBlocksInFlight)
     {
         // lookup block by hash to find height
-        BlockMap::iterator mi = mapBlockIndex.find(queue.hash);
+        BlockMap::iterator mi = mapBlockIndex.find(hash);
         if (mi != mapBlockIndex.end())
         {
             CBlockIndex *pindex = (*mi).second;
@@ -7205,37 +7210,13 @@ bool SendMessages(CNode *pto)
 
 
         // Check for block download timeout and disconnect node if necessary
-        requester.CheckForDownloadTimeout(pto, state, consensusParams, nNow);
+        requester.CheckForDownloadTimeout(pto, consensusParams, nNow);
 
 
         //
         // Message: getdata (blocks)
         //
-        if (!pto->fDisconnect && !pto->fClient && state.nBlocksInFlight < (int)pto->nMaxBlocksInTransit)
-        {
-            std::vector<CBlockIndex *> vToDownload;
-            requester.FindNextBlocksToDownload(
-                pto->GetId(), pto->nMaxBlocksInTransit.load() - state.nBlocksInFlight, vToDownload);
-            // LOG(REQ, "IBD AskFor %d blocks from peer=%s\n", vToDownload.size(), pto->GetLogName());
-            std::vector<CInv> vGetBlocks;
-            for (CBlockIndex *pindex : vToDownload)
-            {
-                CInv inv(MSG_BLOCK, pindex->GetBlockHash());
-                if (!AlreadyHave(inv))
-                {
-                    vGetBlocks.emplace_back(inv);
-                    // LOG(REQ, "AskFor block %s (%d) peer=%s\n", pindex->GetBlockHash().ToString(),
-                    //     pindex->nHeight, pto->GetLogName());
-                }
-            }
-            if (!vGetBlocks.empty())
-            {
-                if (!IsInitialBlockDownload())
-                    requester.AskFor(vGetBlocks, pto);
-                else
-                    requester.AskForDuringIBD(vGetBlocks, pto);
-            }
-        }
+        requester.FindAndRequestNextBlocksToDownload(pto);
 
         //
         // Message: getdata (non-blocks)
