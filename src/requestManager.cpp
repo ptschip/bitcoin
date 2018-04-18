@@ -573,7 +573,7 @@ void CRequestManager::SendRequests()
     // Batch any transaction reqeusts when possible. The process of batching and requesting batched transactions
     // is simlilar to batched block requests, however, we don't make the distinction of whether we're in the process
     // of syncing the chain, as we do with block requests.
-    std::map<CNode *, std::vector<CInv> > mapBatchTxnRequests;
+    std::map<NodeId, std::vector<CInv> > mapBatchTxnRequests;
 
     // Get Blocks
     while (sendBlkIter != mapBlkInfo.end())
@@ -652,11 +652,6 @@ void CRequestManager::SendRequests()
                     // next.requestCount += 1;
                     // next.desirability /= 2;  // Make this node less desirable to re-request.
                     // item.availableFrom.push_back(next);  // Add the node back onto the end of the list
-
-                    // Instead we'll forget about it -- the node is already popped of of the available list so now we'll
-                    // release our reference.
-                    // LOG(REQ, "ReqMgr: %s removed block ref to %d\n", obj.ToString(),
-                    //     next.id);
                     next.id = -1;
                 }
                 else
@@ -683,7 +678,7 @@ void CRequestManager::SendRequests()
             {
                 for (auto &inv : iter.second)
                 {
-                    MarkBlockAsInFlight(iter.first->GetId(), inv.hash);
+                    MarkBlockAsInFlight(iter.first, inv.hash);
                 }
                 connmgr->FindNodeFromId(iter.first)->PushMessage(NetMsgType::GETDATA, iter.second);
                 LOG(REQ, "Sent batched request with %d blocks to nodeid %s\n", iter.second.size(),
@@ -692,11 +687,6 @@ void CRequestManager::SendRequests()
         }
         ENTER_CRITICAL_SECTION(cs_objDownloader);
 
-        LOCK(cs_vNodes);
-        for (auto iter : mapBatchBlockRequests)
-        {
-            iter.first->Release();
-        }
         mapBatchBlockRequests.clear();
     }
 
@@ -745,7 +735,8 @@ void CRequestManager::SendRequests()
                         item.availableFrom.pop_front();
                         if (next.id != -1)
                         {
-                            if (connmgr->FindNodeFromId(next.id).get()->fDisconnect) // Node was disconnected so we can't request from it
+                            // If node was disconnected then we can't request from it
+                            if (connmgr->FindNodeFromId(next.id).get()->fDisconnect)
                             {
                                 LOG(REQ, "ReqMgr: %s removed tx ref to %d (on disconnect).\n",
                                     item.obj.ToString(), next.id);
