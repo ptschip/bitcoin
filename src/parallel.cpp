@@ -506,7 +506,8 @@ void CParallelValidation::HandleBlockMessage(CNode *pfrom, const string &strComm
     // we do not want CNode to be deleted if the node should disconnect while we are processing this block.
     // We will clean up this reference when the thread finishes.
     {
-        LOCK(cs_vNodes);
+        // We do not have to take a vNodes lock here as would usually be the case because at this point there
+        // will be at least one ref already and we therefore don't have to worry about getting disconnected.
         pfrom->AddRef();
     }
 
