@@ -6130,11 +6130,8 @@ bool ProcessMessage(CNode *pfrom, std::string strCommand, CDataStream &vRecv, in
                 }
 
                 // release refs
-                {
-                    LOCK(cs_vNodes);
-                    for (CNode *pnode : vNodesCopy)
-                        pnode->Release();
-                }
+                for (CNode *pnode : vNodesCopy)
+                    pnode->Release();
             }
         }
 

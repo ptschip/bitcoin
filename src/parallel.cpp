@@ -648,10 +648,7 @@ void HandleBlockMessageThread(CNode *pfrom, const string strCommand, CBlockRef p
     PV->Post();
 
     // Remove the CNode reference we aquired just before we launched this thread.
-    {
-        LOCK(cs_vNodes);
-        pfrom->Release();
-    }
+    pfrom->Release();
 
     // If chain is nearly caught up then flush the state after a block is finished processing and the
     // performance timings have been updated.  This way we don't include the flush time in our time to
